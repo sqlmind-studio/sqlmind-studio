@@ -1,0 +1,2 @@
+# sqlmind-studio
+
