@@ -105,9 +105,9 @@ SQLMind Studio is built on and inspired by the work of the open-source community
 
 Special thanks to:
 
-- **Beekeeper Studio(https://github.com/beekeeper-studio/beekeeper-studio)** — for providing a strong open-source foundation that helped shape the early direction of the project.
-- **html-query-plan(https://github.com/JustinPealing/html-query-plan)** — for tooling and ideas related to SQL Server execution plan visualization.
-- **StatisticsParser(https://github.com/Jorriss/StatisticsParser)** — for parsing and working with SQL Server statistics data.
+- **[Beekeeper Studio](https://github.com/beekeeper-studio/beekeeper-studio)** — for providing a strong open-source foundation that helped shape the early direction of the project.
+- **[html-query-plan](https://github.com/JustinPealing/html-query-plan)** — for tooling and ideas related to SQL Server execution plan visualization.
+- **[StatisticsParser](https://github.com/Jorriss/StatisticsParser)** — for parsing and working with SQL Server statistics data.
 
 We are grateful to the maintainers and contributors of these projects for their work
 and for making their software available to the community.
