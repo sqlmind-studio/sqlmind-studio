@@ -1,0 +1,39 @@
+{
+  "name": "sqlmind-root",
+  "version": "1.0.0",
+  "repository": "git@github.com:sqlmind-studio/sqlmind-studio.git",
+  "author": "SQLMind Studio Team <contact@sqltools.co>",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "bks:build": "npm run lib:build && npm -w sqlmind-studio run electron:build",
+    "bks:dev": "npm run lib:build && npm -w sqlmind-studio run electron:serve",
+    "bks:config:build": "npm -w sqlmind-studio run config:build",
+    "lib:dev": "npm -w @sqlmindstudio/ui-kit run lib:dev",
+    "lib:build": "npm -w @sqlmindstudio/ui-kit run build",
+    "sqltools:build": "npm -w sqltools run build",
+    "sqltools:dev": "npm -w sqltools run serve",
+    "electron:build": "npm run bks:build",
+    "electron:serve": "npm run bks:dev",
+    "docs:serve": "npm -w sqlmind-studio run docs:serve",
+    "web:serve": "npm run sqltools:dev",
+    "test:e2e": "npm -w sqlmind-studio run test:e2e",
+    "test:e2e:ci": "npm -w sqlmind-studio run test:e2e:ci",
+    "test:integration": "npm -w sqlmind-studio run test:integration",
+    "test:unit": "npm -w sqlmind-studio run test:unit && npm -w @sqlmindstudio/ui-kit run test:unit",
+    "test:ci": "npm -w sqlmind-studio run test:ci",
+    "test:codemirror": "npm -w sqlmind-studio run test:codemirror",
+    "all:lint": "npm -w sqlmind-studio run lint && npm -w sqltools run lint && npx eslint 'shared/**' --fix",
+    "postinstall": "husky install",
+    "prepack": "pinst --disable",
+    "postpack": "pinst --enable"
+  },
+  "devDependencies": {
+    "husky": "8.0.3",
+    "pinst": "^3.0.0"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}
