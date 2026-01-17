@@ -99,3 +99,16 @@ This project is licensed under the GNU General Public License v3 (GPLv3).
 
 Trademarks (including word marks and logos) are not licensed and remain the property of their respective owners.
 
+## Acknowledgements
+
+SQLMind Studio is built on and inspired by the work of the open-source community.
+
+Special thanks to:
+
+- **Beekeeper Studio** — for providing a strong open-source foundation that helped shape the early direction of the project.
+- **html-query-plan** — for tooling and ideas related to SQL Server execution plan visualization.
+- **StatisticsParser** — for parsing and working with SQL Server statistics data.
+
+We are grateful to the maintainers and contributors of these projects for their work
+and for making their software available to the community.
+
