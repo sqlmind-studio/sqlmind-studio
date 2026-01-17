@@ -82,9 +82,9 @@ yarn test:e2e
 ```
 
 ### Contributing
-Code of conduct: code_of_conduct.md
+Code of conduct: https://github.com/sqlmind-studio/sqlmind-studio?tab=coc-ov-file
 
-Contributing guide: CONTRIBUTING.md
+Contributing guide: https://github.com/sqlmind-studio/sqlmind-studio?tab=contributing-ov-file
 
 ### Trademarks
 This software is derived from the source code for Beekeeper Studio.
