@@ -79,6 +79,7 @@ Shared UI components used by the app.
 ### Tests
 yarn test:unit
 yarn test:e2e
+```
 
 ### Contributing
 Code of conduct: code_of_conduct.md
