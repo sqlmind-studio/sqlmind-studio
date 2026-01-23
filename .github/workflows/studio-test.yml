@@ -48,7 +48,7 @@ jobs:
           npm_config_node_gyp: ${{ github.workspace }}${{ runner.os == 'Windows' && '\node_modules\node-gyp\bin\node-gyp.js' || '/node_modules/node-gyp/bin/node-gyp.js' }}
 
       - name: Lint
-        - run: yarn workspace apps/studio run lint
+        - run: yarn workspace sqlmind-studio run lint
 
       - name: Check for bad files
         run: bin/check-for-only-tests.sh
