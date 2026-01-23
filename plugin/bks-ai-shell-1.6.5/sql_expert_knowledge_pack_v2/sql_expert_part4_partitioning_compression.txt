@@ -1,0 +1,24 @@
+####################################################################################################
+# PART 4: Partitioning & Compression
+####################################################################################################
+## Design
+* Partition by RANGE RIGHT/LEFT on aligned filegroups. Keep boundary values immutable.
+* Aligned indexes: same partition scheme as base table for SWITCH operations.
+## Sliding Window
+* Load to staging table; ALTER TABLE SWITCH INTO active partition; MERGE for dimension updates.
+## Maintenance
+-- Check partition row counts
+SELECT p.partition_number, ps.name AS scheme_name, fg.name AS filegroup, SUM(a.total_pages)*8/1024 AS MB
+FROM sys.partitions p
+JOIN sys.allocation_units a ON p.hobt_id=a.container_id
+JOIN sys.indexes i ON p.object_id=i.object_id AND p.index_id=i.index_id
+JOIN sys.partition_schemes ps ON i.data_space_id=ps.data_space_id
+JOIN sys.filegroups fg ON ps.data_space_id=fg.data_space_id
+WHERE i.object_id=OBJECT_ID('dbo.Fact')
+GROUP BY p.partition_number, ps.name, fg.name
+ORDER BY p.partition_number;
+## Compression
+* ROW for OLTP, PAGE for cold data; measure via sp_estimate_data_compression_savings.
+####################################################################################################
+# END PART 4
+####################################################################################################

@@ -1,0 +1,42 @@
+{
+  "id": "bks-ai-shell",
+  "name": "AI Mode",
+  "version": "1.6.7",
+  "minAppVersion": "5.4.0",
+  "requiresLicense": true,
+  "description": "Ask AI to analyze your database and generate SQL queries.",
+  "author": {
+    "name": "SQLMind Studio",
+    "url": "https://sqltools.co"
+  },
+  "icon": "auto_awesome",
+  "manifestVersion": 0,
+  "capabilities": {
+    "views": {
+      "tabTypes": [
+        {
+          "id": "bks-ai-shell",
+          "name": "AI Mode",
+          "kind": "shell",
+          "entry": "dist/index.html"
+        }
+      ],
+      "sidebarViews": [
+        {
+          "id": "bks-ai-shell-sidebar",
+          "name": "AI Mode",
+          "entry": "dist/index.html"
+        }
+      ]
+    },
+    "menu": [
+      {
+        "command": "new-tab-dropdown-item",
+        "name": "Add AI Mode",
+        "view": "bks-ai-shell",
+        "placement": "newTabDropdown"
+      }
+    ]
+  },
+  "permissions": []
+}

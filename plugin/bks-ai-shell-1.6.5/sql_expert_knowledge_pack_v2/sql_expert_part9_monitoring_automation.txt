@@ -1,0 +1,19 @@
+####################################################################################################
+# PART 9: Monitoring & Automation
+####################################################################################################
+## Extended Events
+CREATE EVENT SESSION SlowQueries ON SERVER
+ADD EVENT sqlserver.rpc_completed(DURATION>100000),
+ADD EVENT sqlserver.sql_batch_completed(DURATION>100000)
+ADD TARGET package0.event_file(SET filename='E:\xe\slowqueries.xel')
+WITH (STARTUP_STATE=ON);
+ALTER EVENT SESSION SlowQueries ON SERVER STATE=START;
+## Agent Jobs
+* Separate operator alerts; retry policies; output to files; failure notifications.
+## dbatools / PowerShell (examples)
+# Install-Module dbatools; Test-DbaMaxMemory; Set-DbaMaxMemory; Invoke-DbaDiagnose
+## sp_Blitz family (Brent Ozar)
+* sp_Blitz, sp_BlitzCache, sp_BlitzIndex for health, plan, and index analysis.
+####################################################################################################
+# END PART 9
+####################################################################################################

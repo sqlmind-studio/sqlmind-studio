@@ -1,0 +1,19 @@
+{
+  "name": "@sqlmindstudio/plugin",
+  "version": "1.4.0",
+  "description": "SQLMind Studio plugin API wrapper for @sqlmindstudio/plugin",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "sqlmindstudio",
+    "plugin",
+    "api"
+  ],
+  "author": "SQLMind Studio",
+  "license": "MIT",
+  "dependencies": {
+    "@beekeeperstudio/plugin": "^1.4.0"
+  }
+}

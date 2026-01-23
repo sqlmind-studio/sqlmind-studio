@@ -1,0 +1,17 @@
+####################################################################################################
+# PART 11: Troubleshooting Cookbook
+####################################################################################################
+## Slow Server Checklist
+1) Check waits; 2) Active requests; 3) Top resource queries; 4) File IO latency;
+5) Blocking/locks; 6) Memory pressure; 7) TempDB contention; 8) Plan regressions (Query Store).
+## CPU 100%
+* Find top workers via sys.dm_exec_requests/time_stats; tune plans; raise cost threshold; set MAXDOP.
+## IO Latency
+* vfs DMV; separate data/log/tempdb; enable TF 3427/3467 legacy cautiously; compression and page verify.
+## Log Growth Storm
+* Right-size log, fixed growth MB, frequent log backups; avoid autogrow tiny increments.
+## Parameter Sniffing
+* RECOMPILE for volatile OLTP; OPTIMIZE FOR typical value; plan guides (legacy) or Forced Plan (QS).
+####################################################################################################
+# END PART 11
+####################################################################################################

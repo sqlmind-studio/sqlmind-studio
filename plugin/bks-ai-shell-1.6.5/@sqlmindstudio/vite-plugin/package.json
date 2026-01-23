@@ -1,0 +1,19 @@
+{
+  "name": "@sqlmindstudio/vite-plugin",
+  "version": "1.0.3",
+  "description": "SQLMind Studio Vite plugin wrapper for @sqlmindstudio/vite-plugin",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "sqlmindstudio",
+    "vite",
+    "plugin"
+  ],
+  "author": "SQLMind Studio",
+  "license": "MIT",
+  "dependencies": {
+    "@beekeeperstudio/vite-plugin": "^1.0.3"
+  }
+}

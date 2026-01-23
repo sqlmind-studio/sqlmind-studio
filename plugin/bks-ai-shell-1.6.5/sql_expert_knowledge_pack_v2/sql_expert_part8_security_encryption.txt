@@ -1,0 +1,21 @@
+####################################################################################################
+# PART 8: Security & Encryption
+####################################################################################################
+## Principals & Securables
+* Use schemas; least privilege via roles; avoid dbo ownership where not needed.
+## Row-Level Security
+CREATE SECURITY POLICY dbo.Policy ADD FILTER PREDICATE dbo.fnTenantPredicate(TenantId) ON dbo.Table WITH (STATE=ON);
+## Dynamic Data Masking
+ALTER TABLE dbo.Customers ALTER COLUMN Email ADD MASKED WITH (FUNCTION='email()');
+## Always Encrypted
+* Client-side encryption; requires CEK/CMK; limits operations on encrypted columns.
+## TDE
+CREATE MASTER KEY ENCRYPTION BY PASSWORD='Strong!Pass1';
+CREATE CERTIFICATE TDECert WITH SUBJECT='TDE';
+CREATE DATABASE ENCRYPTION KEY WITH ALGORITHM = AES_256 ENCRYPTION BY SERVER CERTIFICATE TDECert;
+ALTER DATABASE Db SET ENCRYPTION ON;
+## Auditing
+* Use Extended Events/Audit for compliance; store to file target.
+####################################################################################################
+# END PART 8
+####################################################################################################

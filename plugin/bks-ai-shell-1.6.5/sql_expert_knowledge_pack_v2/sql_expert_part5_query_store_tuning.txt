@@ -1,0 +1,23 @@
+####################################################################################################
+# PART 5: Query Store & Automatic Tuning
+####################################################################################################
+## Enable & Configure
+ALTER DATABASE CurrentDB SET QUERY_STORE = ON;
+ALTER DATABASE CurrentDB SET QUERY_STORE (OPERATION_MODE = READ_WRITE, INTERVAL_LENGTH_MINUTES = 15);
+## Use Cases
+* Track regressions, force known-good plans, see top resource consumers over time.
+-- Top regressed queries
+SELECT TOP 20 qsq.query_id, qsq.count_executions, rs.avg_duration
+FROM sys.query_store_query_text qst
+JOIN sys.query_store_query qsq ON qst.query_text_id=qsq.query_text_id
+JOIN sys.query_store_plan p ON qsq.query_id=p.query_id
+JOIN sys.query_store_runtime_stats rs ON p.plan_id=rs.plan_id
+ORDER BY rs.avg_duration DESC;
+## Force/Unforce Plan
+EXEC sp_query_store_force_plan @query_id=123,@plan_id=456;
+EXEC sp_query_store_unforce_plan @query_id=123,@plan_id=456;
+## Automatic Tuning (2017+/Azure)
+ALTER DATABASE SCOPED CONFIGURATION SET AUTOMATIC_TUNING = AUTO;
+####################################################################################################
+# END PART 5
+####################################################################################################

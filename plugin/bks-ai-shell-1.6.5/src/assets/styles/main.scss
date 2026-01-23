@@ -1,0 +1,33 @@
+@use "theme";
+@use "base";
+@use "components/all" as components;
+@use "pages/all" as pages;
+@use "sass:color";
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f0f0f; // Fallback - matches query-editor-bg
+  background-color: var(--query-editor-bg, #0f0f0f);
+}
+
+.shell-app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  background-color: #0f0f0f; // Fallback - matches query-editor-bg
+  background-color: var(--query-editor-bg, #0f0f0f);
+}
+
+.not-ready {
+  width: 100%;
+  max-width: 20rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}

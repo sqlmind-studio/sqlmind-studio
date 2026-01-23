@@ -1,0 +1,45 @@
+####################################################################################################
+# SQL SERVER EXPERT KNOWLEDGE PACK - PART 2
+# Focus: Indexing, Wait Stats, and Execution Diagnostics
+# Compatible with SQL Server 2012 – 2022
+####################################################################################################
+## SECTION 10: INDEXING MASTERCLASS
+* Clustered index: narrow, static, increasing key preferred. Avoid random GUID unless NEWSEQUENTIALID().
+* Nonclustered: filter/seek columns as keys; use INCLUDE for covering.
+* Filtered indexes for stable predicates; Indexed views (SCHEMABINDING) for persistent aggregates.
+* Columnstore (2016+): CCI for warehouse; NCCI for hybrid OLTP+analytics; monitor row group DMVs.
+* Maintenance: >30% rebuild; 10–30% reorganize; sample fragmentation via dm_db_index_physical_stats.
+* Compression: ROW/PAGE—trade CPU for I/O. Consider on cold/large tables.
+* Heaps cause forwarding pointers—prefer clustered indexes.
+## SECTION 11: INDEX ANALYSIS & TROUBLESHOOTING
+-- Missing indexes (top)
+SELECT TOP 10 mid.statement, mid.equality_columns, mid.inequality_columns,
+       migs.avg_total_user_cost, migs.avg_user_impact
+FROM sys.dm_db_missing_index_details mid
+JOIN sys.dm_db_missing_index_groups mig ON mid.index_handle=mig.index_handle
+JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle=mig.index_group_handle
+ORDER BY migs.avg_user_impact DESC;
+-- Usage stats
+SELECT OBJECT_NAME(i.object_id) AS TableName, i.name AS IndexName,
+       user_seeks,user_scans,user_lookups,user_updates
+FROM sys.dm_db_index_usage_stats s
+JOIN sys.indexes i ON s.object_id=i.object_id AND s.index_id=i.index_id
+WHERE OBJECTPROPERTY(i.object_id,'IsUserTable')=1;
+## SECTION 12: WAIT STATS DIAGNOSTICS
+* Common waits: CXPACKET/CXCONSUMER (parallelism), PAGEIOLATCH_* (disk), SOS_SCHEDULER_YIELD (CPU),
+  LCK_M_* (locks), WRITELOG (log I/O), ASYNC_NETWORK_IO (client fetch), THREADPOOL (workers),
+  RESOURCE_SEMAPHORE (memory grants), PAGELATCH_* (TempDB).
+-- Top waits
+SELECT TOP 15 wait_type, wait_time_ms/1000.0 AS seconds, waiting_tasks_count,
+       wait_time_ms/NULLIF(waiting_tasks_count,0) AS avg_ms_per_wait
+FROM sys.dm_os_wait_stats WHERE wait_type NOT LIKE 'SLEEP%'
+ORDER BY wait_time_ms DESC;
+## SECTION 13: EXECUTION PLAN TROUBLESHOOTING
+* Eliminate key lookups with covering indexes; align datatypes to avoid CONVERT_IMPLICIT; avoid scalar UDFs (2019+ inlining helps).
+* Consider ORDER BY indexes for Top-N sorts.
+## SECTION 15: INDEX & PLAN MAINTENANCE CHECKLIST
+* Remove duplicate/unused indexes, add covering for hot queries, update stats after large loads,
+  use Query Store, validate fillfactor, schedule rebuilds off-peak, automate via Ola or dbatools.
+####################################################################################################
+# END OF PART 2
+####################################################################################################

@@ -1,0 +1,23 @@
+####################################################################################################
+# PART 7: Backup/Restore & HADR (Always On)
+####################################################################################################
+## Backups
+* Full, Differential, Log; use COPY_ONLY for ad-hoc fulls; compress backups.
+-- Example
+BACKUP DATABASE Db TO DISK='E:\backups\Db_full.bak' WITH INIT, COMPRESSION, CHECKSUM;
+BACKUP LOG Db TO DISK='E:\backups\Db_log.trn' WITH INIT, COMPRESSION, CHECKSUM;
+## Restore
+-- Inspect backup
+RESTORE FILELISTONLY FROM DISK='E:\backups\Db_full.bak';
+-- Move files
+RESTORE DATABASE Db FROM DISK='E:\backups\Db_full.bak'
+WITH MOVE 'Db' TO 'D:\data\Db.mdf',
+     MOVE 'Db_log' TO 'D:\log\Db.ldf', NORECOVERY;
+## Always On AGs (2012+)
+* Synchronous (HA) vs Asynchronous (DR); automatic failover with synchronous + healthy; listener for routing.
+* Quorum & votes via WSFC; test failovers; read-only routing lists.
+## Log Shipping & Mirroring (Legacy)
+* Simple, reliable DR; monitor latency, copy/restore jobs; mirroring deprecated in newer versions.
+####################################################################################################
+# END PART 7
+####################################################################################################

@@ -1,0 +1,60 @@
+.api-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-inline: auto;
+
+  .actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  button {
+    &:disabled {
+      opacity: 0.6;
+    }
+  }
+
+  .error-message {
+    background-color: rgb(from var(--brand-danger) r g b / 20%);
+    border: 1px solid rgb(from var(--brand-danger) r g b / 100%);
+    color: var(--text-dark);
+    padding: 0.75rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+    text-align: left;
+  }
+
+  .base-input {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    label {
+      margin-top: 0.6rem;
+      width: 10rem;
+    }
+
+    .input-wrapper {
+      flex-grow: 1;
+    }
+  }
+}
+
+.provider-selection {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 0.5rem;
+
+  select {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    background-color: var(--query-editor-bg);
+    color: var(--text-dark);
+  }
+}

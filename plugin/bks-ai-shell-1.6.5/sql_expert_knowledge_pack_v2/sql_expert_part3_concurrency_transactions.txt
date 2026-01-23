@@ -1,0 +1,33 @@
+####################################################################################################
+# PART 3: Concurrency, Transactions, Isolation, Deadlocks (SQL Server 2012–2022)
+####################################################################################################
+## Locks & Latches
+* Lock types: S, U, X, IS/IX/SIX; ranges (RangeS-S/U/X) under SERIALIZABLE.
+* Lock escalation: per object to table/partition; use trace flags cautiously; prefer good indexes.
+* Latches synchronize in-memory pages; PAGELATCH_* hot spots common in TempDB.
+## Isolation Levels
+* READ UNCOMMITTED (dirty), READ COMMITTED (default), RCSI (db option), SNAPSHOT, REPEATABLE READ, SERIALIZABLE.
+* RCSI vs SNAPSHOT: RCSI is statement-level; SNAPSHOT is transaction-level. Both rely on version store in TempDB.
+* Enable:
+ALTER DATABASE db SET READ_COMMITTED_SNAPSHOT ON;
+ALTER DATABASE db SET ALLOW_SNAPSHOT_ISOLATION ON;
+## Deadlocks
+* Detect via system_health XE or ring_buffer; capture deadlock graph XML.
+* Common causes: inconsistent access order, missing indexes, long transactions, serializable range locks.
+* Fixes: shorter transactions, consistent order, appropriate indexes, retry logic for victims.
+## Blocking & Troubleshooting
+-- Who is blocking?
+SELECT r.session_id,r.status,r.blocking_session_id,r.wait_type,r.wait_time,r.cpu_time,r.logical_reads,t.text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.blocking_session_id <> 0 OR r.wait_type LIKE 'LCK%';
+-- Lock snapshot
+SELECT * FROM sys.dm_tran_locks;
+## Snapshot Pitfalls
+* Errors when changing isolation mid-transaction; ensure BEGIN TRAN under desired level.
+* Version store bloat → monitor sys.dm_tran_version_store_space_usage; size TempDB accordingly.
+## Retry Pattern (App Side)
+* Catch 1205 (deadlock) and retry with backoff; keep transactions short; avoid user interaction mid-transaction.
+####################################################################################################
+# END PART 3
+####################################################################################################

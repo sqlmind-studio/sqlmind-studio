@@ -1,0 +1,55 @@
+####################################################################################################
+# SQL SERVER EXPERT KNOWLEDGE PACK - PART 1
+# Focus: Core Architecture, Storage Engine, and Query Processor
+# Compatible with SQL Server 2012 – 2022
+####################################################################################################
+## SECTION 1: SQL SERVER ARCHITECTURE OVERVIEW
+* Engines: Relational (Query Processor) and Storage Engine.
+* SQLOS handles schedulers, memory, I/O. Buffer Pool caches 8KB pages.
+* Lazy Writer frees pages; Checkpoint flushes dirty pages; Log Writer persists WAL.
+* Pages: data/index/text/IAM/GAM/SGAM/PFS; 8 pages = 1 extent (64KB).
+* Recovery models: SIMPLE, FULL, BULK_LOGGED. WAL ensures durability.
+* Transaction log: sequential with VLFs. Keep sane growth, avoid excessive VLFs.
+* TempDB: recreated each start. Use multiple data files (up to 8), TF1118 (<=2016).
+* Memory: watch sys.dm_os_memory_clerks; set max server memory.
+* Schedulers: one per CPU; check sys.dm_os_schedulers for runnable_tasks_count.
+* Spinlocks/latches: diagnose via sys.dm_os_spinlock_stats.
+## SECTION 2: QUERY PROCESSOR (RELATIONAL ENGINE)
+* Phases: Parse → Bind → Optimize → Execute. Plans cached in sys.dm_exec_cached_plans.
+* Parameter sniffing mitigations: OPTION(RECOMPILE), OPTIMIZE FOR, local vars, OPTIMIZE FOR UNKNOWN.
+* Adaptive Query Processing (2017+): memory grant feedback, adaptive joins, interleaved exec.
+* Batch mode on rowstore (2019+). Cardinality Estimator legacy vs new (120+); scoped config to toggle.
+## SECTION 3: EXECUTION PLAN BASICS
+* Operators: seeks, scans, NL/Merge/Hash joins. Use SET STATISTICS IO/TIME and actual plans.
+* Warnings: spills, implicit conversions, missing indexes, CE issues.
+## SECTION 4: STATISTICS & OPTIMIZATION
+* Auto create/update; thresholds: <500 → 500; >=500 → 20%+500. Consider ASYNC.
+* FULLSCAN for skewed data. Filtered stats for subsets.
+* Hints: RECOMPILE, MAXDOP, FORCE ORDER (sparingly).
+## SECTION 5: COST-BASED OPTIMIZER DETAILS
+* Trivial vs full optimization; timeouts use best-so-far plan.
+* Plan reuse rules; Query Store forced plans to avoid regressions.
+## SECTION 6: PARALLELISM
+* cost threshold (default 5—raise it). MAXDOP per workload; monitor CXPACKET/CXCONSUMER.
+## SECTION 7: MEMORY GRANT TUNING
+* Check sys.dm_exec_query_memory_grants; fix spills via stats/indexes/query rewrite; feedback (2017+).
+## SECTION 8: COMMON PERFORMANCE DMVs
+-- Top resource queries
+SELECT TOP 10 total_elapsed_time/1000 AS total_ms,total_logical_reads,execution_count,
+       SUBSTRING(qt.text,1,2000) AS query_text
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+ORDER BY total_elapsed_time DESC;
+-- Active requests
+SELECT session_id,status,blocking_session_id,wait_type,cpu_time,total_elapsed_time
+FROM sys.dm_exec_requests;
+-- Waits
+SELECT wait_type,waiting_tasks_count,wait_time_ms
+FROM sys.dm_os_wait_stats WHERE wait_type NOT LIKE 'SLEEP%'
+ORDER BY wait_time_ms DESC;
+## SECTION 9: OPTIMIZATION CHECKLIST
+* Fresh stats; align datatypes; avoid functions on indexed columns; covering indexes; avoid scalar UDFs;
+* Check waits; use Query Store; tune MAXDOP + cost threshold; benchmark with STATISTICS IO/TIME.
+####################################################################################################
+# END OF PART 1
+####################################################################################################

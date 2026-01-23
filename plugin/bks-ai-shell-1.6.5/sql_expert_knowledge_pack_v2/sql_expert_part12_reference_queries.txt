@@ -1,0 +1,20 @@
+####################################################################################################
+# PART 12: Reference DMV Queries & Maintenance Snippets
+####################################################################################################
+-- Blocking chain
+WITH L AS (SELECT request_session_id AS sid, blocking_session_id AS bsid FROM sys.dm_tran_locks GROUP BY request_session_id, blocking_session_id)
+SELECT r.session_id, r.status, r.wait_type, r.blocking_session_id, t.text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+ORDER BY r.total_elapsed_time DESC;
+-- Stats staleness (approximate)
+SELECT OBJECT_NAME(i.object_id) AS TableName, s.name AS StatName, STATS_DATE(s.object_id,s.stats_id) AS LastUpdated
+FROM sys.stats s JOIN sys.indexes i ON s.object_id=i.object_id AND s.stats_id=i.index_id
+WHERE OBJECTPROPERTY(s.object_id,'IsUserTable')=1
+ORDER BY LastUpdated;
+-- Index rebuild template
+ALTER INDEX ALL ON dbo.Table WITH (ONLINE=ON) REBUILD;
+-- Weekly full, daily diff, 15-min log strategy (example)—adjust to RPO/RTO.
+####################################################################################################
+# END PART 12
+####################################################################################################

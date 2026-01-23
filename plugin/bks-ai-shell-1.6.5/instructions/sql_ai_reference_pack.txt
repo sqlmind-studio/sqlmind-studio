@@ -1,0 +1,662 @@
+# SQL Server AI Reference Pack
+# Comprehensive SQL Server knowledge base for advanced scenarios
+# This file contains detailed examples, DMV queries, and real-world scripts
+
+## Table of Contents
+1. Advanced Query Patterns
+2. Performance Tuning Scripts
+3. DMV Queries for Diagnostics
+4. Index Optimization Scripts
+5. Real-World Examples
+6. Common Patterns & Anti-Patterns
+7. Troubleshooting Guide
+
+---
+
+## 1. Advanced Query Patterns
+
+### Recursive CTEs for Hierarchical Data
+```sql
+-- Employee hierarchy traversal
+WITH EmployeeHierarchy AS (
+    -- Anchor: Top-level employees
+    SELECT EmployeeID, ManagerID, Name, 0 AS Level
+    FROM Employees
+    WHERE ManagerID IS NULL
+    
+    UNION ALL
+    
+    -- Recursive: Get subordinates
+    SELECT e.EmployeeID, e.ManagerID, e.Name, eh.Level + 1
+    FROM Employees e
+    INNER JOIN EmployeeHierarchy eh ON e.ManagerID = eh.EmployeeID
+)
+SELECT * FROM EmployeeHierarchy
+ORDER BY Level, Name;
+```
+
+### Pivot and Unpivot Operations
+```sql
+-- Dynamic pivot for sales by month
+DECLARE @cols NVARCHAR(MAX), @query NVARCHAR(MAX);
+
+SELECT @cols = STRING_AGG(QUOTENAME(Month), ',') WITHIN GROUP (ORDER BY Month)
+FROM (SELECT DISTINCT DATENAME(MONTH, OrderDate) AS Month FROM Orders) AS Months;
+
+SET @query = '
+SELECT ProductName, ' + @cols + '
+FROM (
+    SELECT ProductName, DATENAME(MONTH, OrderDate) AS Month, SalesAmount
+    FROM Orders
+) AS SourceTable
+PIVOT (
+    SUM(SalesAmount)
+    FOR Month IN (' + @cols + ')
+) AS PivotTable;';
+
+EXEC sp_executesql @query;
+```
+
+### Window Functions - Running Totals and Moving Averages
+```sql
+-- Running total and 7-day moving average
+SELECT 
+    OrderDate,
+    OrderAmount,
+    SUM(OrderAmount) OVER (ORDER BY OrderDate) AS RunningTotal,
+    AVG(OrderAmount) OVER (
+        ORDER BY OrderDate 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS MovingAvg7Day,
+    ROW_NUMBER() OVER (PARTITION BY YEAR(OrderDate) ORDER BY OrderAmount DESC) AS RankInYear
+FROM Orders;
+```
+
+### Gap and Islands Problem
+```sql
+-- Find consecutive date ranges
+WITH DateGroups AS (
+    SELECT 
+        Date,
+        DATEADD(DAY, -ROW_NUMBER() OVER (ORDER BY Date), Date) AS GroupID
+    FROM ActivityLog
+)
+SELECT 
+    MIN(Date) AS StartDate,
+    MAX(Date) AS EndDate,
+    DATEDIFF(DAY, MIN(Date), MAX(Date)) + 1 AS ConsecutiveDays
+FROM DateGroups
+GROUP BY GroupID
+ORDER BY StartDate;
+```
+
+---
+
+## 2. Performance Tuning Scripts
+
+### Find Missing Indexes
+```sql
+-- Top 20 missing indexes by improvement measure
+SELECT TOP 20
+    CONVERT(DECIMAL(18,2), migs.avg_total_user_cost * migs.avg_user_impact * (migs.user_seeks + migs.user_scans)) AS ImprovementMeasure,
+    OBJECT_NAME(mid.object_id, mid.database_id) AS TableName,
+    'CREATE INDEX IX_' + OBJECT_NAME(mid.object_id, mid.database_id) + '_' 
+        + REPLACE(REPLACE(REPLACE(ISNULL(mid.equality_columns,''), ', ', '_'), '[', ''), ']', '')
+        + CASE WHEN mid.inequality_columns IS NOT NULL THEN '_' + REPLACE(REPLACE(REPLACE(mid.inequality_columns, ', ', '_'), '[', ''), ']', '') ELSE '' END
+        + ' ON ' + mid.statement
+        + ' (' + ISNULL(mid.equality_columns, '')
+        + CASE WHEN mid.equality_columns IS NOT NULL AND mid.inequality_columns IS NOT NULL THEN ',' ELSE '' END
+        + ISNULL(mid.inequality_columns, '') + ')'
+        + ISNULL(' INCLUDE (' + mid.included_columns + ')', '') AS CreateIndexStatement,
+    migs.user_seeks,
+    migs.user_scans,
+    migs.avg_total_user_cost,
+    migs.avg_user_impact
+FROM sys.dm_db_missing_index_groups mig
+INNER JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle
+INNER JOIN sys.dm_db_missing_index_details mid ON mig.index_handle = mid.index_handle
+WHERE mid.database_id = DB_ID()
+ORDER BY ImprovementMeasure DESC;
+```
+
+### Find Unused Indexes
+```sql
+-- Indexes with no seeks/scans (candidates for removal)
+SELECT 
+    OBJECT_NAME(i.object_id) AS TableName,
+    i.name AS IndexName,
+    i.type_desc AS IndexType,
+    us.user_seeks,
+    us.user_scans,
+    us.user_lookups,
+    us.user_updates,
+    p.rows AS RowCounts,
+    (8 * SUM(a.used_pages)) / 1024 AS IndexSizeMB
+FROM sys.indexes i
+LEFT JOIN sys.dm_db_index_usage_stats us ON i.object_id = us.object_id AND i.index_id = us.index_id AND us.database_id = DB_ID()
+INNER JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
+WHERE OBJECTPROPERTY(i.object_id, 'IsUserTable') = 1
+    AND i.index_id > 0  -- Exclude heaps
+    AND us.user_seeks IS NULL
+    AND us.user_scans IS NULL
+    AND us.user_lookups IS NULL
+GROUP BY OBJECT_NAME(i.object_id), i.name, i.type_desc, us.user_seeks, us.user_scans, us.user_lookups, us.user_updates, p.rows
+HAVING SUM(p.rows) > 0
+ORDER BY us.user_updates DESC;
+```
+
+### Index Fragmentation Analysis
+```sql
+-- Check index fragmentation
+SELECT 
+    OBJECT_NAME(ips.object_id) AS TableName,
+    i.name AS IndexName,
+    ips.index_type_desc,
+    ips.avg_fragmentation_in_percent,
+    ips.page_count,
+    CASE 
+        WHEN ips.avg_fragmentation_in_percent > 30 THEN 'ALTER INDEX [' + i.name + '] ON [' + OBJECT_NAME(ips.object_id) + '] REBUILD;'
+        WHEN ips.avg_fragmentation_in_percent > 10 THEN 'ALTER INDEX [' + i.name + '] ON [' + OBJECT_NAME(ips.object_id) + '] REORGANIZE;'
+        ELSE 'No action needed'
+    END AS RecommendedAction
+FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+WHERE ips.page_count > 1000  -- Only consider indexes with significant pages
+    AND OBJECTPROPERTY(ips.object_id, 'IsUserTable') = 1
+ORDER BY ips.avg_fragmentation_in_percent DESC;
+```
+
+---
+
+## 3. DMV Queries for Diagnostics
+
+### Top CPU Consuming Queries
+```sql
+-- Top 20 queries by CPU time
+SELECT TOP 20
+    qs.execution_count,
+    qs.total_worker_time / 1000 AS TotalCPUTimeMS,
+    qs.total_worker_time / qs.execution_count / 1000 AS AvgCPUTimeMS,
+    qs.total_elapsed_time / 1000 AS TotalElapsedTimeMS,
+    qs.total_logical_reads,
+    qs.total_logical_writes,
+    SUBSTRING(qt.text, (qs.statement_start_offset/2)+1,
+        ((CASE qs.statement_end_offset
+            WHEN -1 THEN DATALENGTH(qt.text)
+            ELSE qs.statement_end_offset
+        END - qs.statement_start_offset)/2) + 1) AS QueryText,
+    qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+ORDER BY qs.total_worker_time DESC;
+```
+
+### Currently Running Queries
+```sql
+-- Active queries with wait information
+SELECT 
+    r.session_id,
+    r.status,
+    r.command,
+    r.wait_type,
+    r.wait_time,
+    r.blocking_session_id,
+    r.cpu_time,
+    r.total_elapsed_time,
+    r.reads,
+    r.writes,
+    r.logical_reads,
+    DB_NAME(r.database_id) AS DatabaseName,
+    SUBSTRING(qt.text, (r.statement_start_offset/2)+1,
+        ((CASE r.statement_end_offset
+            WHEN -1 THEN DATALENGTH(qt.text)
+            ELSE r.statement_end_offset
+        END - r.statement_start_offset)/2) + 1) AS QueryText,
+    qp.query_plan
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) qt
+CROSS APPLY sys.dm_exec_query_plan(r.plan_handle) qp
+WHERE r.session_id <> @@SPID
+ORDER BY r.total_elapsed_time DESC;
+```
+
+### Wait Statistics Analysis
+```sql
+-- Top wait types
+SELECT TOP 20
+    wait_type,
+    wait_time_ms / 1000.0 AS WaitTimeSeconds,
+    (wait_time_ms - signal_wait_time_ms) / 1000.0 AS ResourceWaitTimeSeconds,
+    signal_wait_time_ms / 1000.0 AS SignalWaitTimeSeconds,
+    waiting_tasks_count,
+    wait_time_ms / waiting_tasks_count AS AvgWaitTimeMS,
+    CAST(100.0 * wait_time_ms / SUM(wait_time_ms) OVER() AS DECIMAL(5,2)) AS PercentageOfTotal
+FROM sys.dm_os_wait_stats
+WHERE wait_type NOT IN (
+    'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE', 'SLEEP_TASK',
+    'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH', 'WAITFOR', 'LOGMGR_QUEUE',
+    'CHECKPOINT_QUEUE', 'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT',
+    'BROKER_TO_FLUSH', 'BROKER_TASK_STOP', 'CLR_MANUAL_EVENT', 'CLR_AUTO_EVENT',
+    'DISPATCHER_QUEUE_SEMAPHORE', 'FT_IFTS_SCHEDULER_IDLE_WAIT', 'XE_DISPATCHER_WAIT',
+    'XE_DISPATCHER_JOIN', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP'
+)
+ORDER BY wait_time_ms DESC;
+```
+
+### Blocking and Deadlock Detection
+```sql
+-- Find blocking chains
+;WITH BlockingHierarchy AS (
+    SELECT 
+        s.session_id,
+        s.blocking_session_id,
+        r.wait_type,
+        r.wait_time,
+        r.wait_resource,
+        CAST(s.session_id AS VARCHAR(MAX)) AS BlockingChain,
+        0 AS Level
+    FROM sys.dm_exec_sessions s
+    LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+    WHERE s.blocking_session_id = 0
+        AND EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE blocking_session_id = s.session_id)
+    
+    UNION ALL
+    
+    SELECT 
+        s.session_id,
+        s.blocking_session_id,
+        r.wait_type,
+        r.wait_time,
+        r.wait_resource,
+        CAST(bh.BlockingChain + ' -> ' + CAST(s.session_id AS VARCHAR(MAX)) AS VARCHAR(MAX)),
+        bh.Level + 1
+    FROM sys.dm_exec_sessions s
+    INNER JOIN BlockingHierarchy bh ON s.blocking_session_id = bh.session_id
+    LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+)
+SELECT 
+    bh.*,
+    SUBSTRING(qt.text, (r.statement_start_offset/2)+1,
+        ((CASE r.statement_end_offset
+            WHEN -1 THEN DATALENGTH(qt.text)
+            ELSE r.statement_end_offset
+        END - r.statement_start_offset)/2) + 1) AS QueryText
+FROM BlockingHierarchy bh
+LEFT JOIN sys.dm_exec_requests r ON bh.session_id = r.session_id
+OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) qt
+ORDER BY bh.BlockingChain;
+```
+
+### Database Size and Growth
+```sql
+-- Database file sizes and growth
+SELECT 
+    DB_NAME() AS DatabaseName,
+    f.name AS LogicalName,
+    f.type_desc AS FileType,
+    f.physical_name AS PhysicalName,
+    CAST(f.size * 8.0 / 1024 AS DECIMAL(10,2)) AS SizeMB,
+    CAST(FILEPROPERTY(f.name, 'SpaceUsed') * 8.0 / 1024 AS DECIMAL(10,2)) AS UsedMB,
+    CAST((f.size - FILEPROPERTY(f.name, 'SpaceUsed')) * 8.0 / 1024 AS DECIMAL(10,2)) AS FreeMB,
+    CAST(FILEPROPERTY(f.name, 'SpaceUsed') * 100.0 / f.size AS DECIMAL(5,2)) AS PercentUsed,
+    CASE f.is_percent_growth
+        WHEN 1 THEN CAST(f.growth AS VARCHAR(10)) + '%'
+        ELSE CAST(f.growth * 8.0 / 1024 AS VARCHAR(10)) + ' MB'
+    END AS GrowthSetting,
+    CASE f.max_size
+        WHEN -1 THEN 'Unlimited'
+        WHEN 268435456 THEN 'Unlimited'
+        ELSE CAST(f.max_size * 8.0 / 1024 AS VARCHAR(20)) + ' MB'
+    END AS MaxSize
+FROM sys.database_files f
+ORDER BY f.type, f.file_id;
+```
+
+---
+
+## 4. Index Optimization Scripts
+
+### Create Optimal Covering Index
+```sql
+-- Template for covering index with included columns
+CREATE NONCLUSTERED INDEX IX_TableName_FilterColumns_IncludedColumns
+ON dbo.TableName (Column1, Column2)  -- Columns used in WHERE/JOIN (most selective first)
+INCLUDE (Column3, Column4, Column5)   -- Columns in SELECT but not in WHERE/JOIN
+WHERE Column1 IS NOT NULL             -- Optional filter for partial index
+WITH (
+    FILLFACTOR = 90,                  -- Leave 10% space for updates
+    ONLINE = ON,                      -- SQL Server Enterprise only
+    MAXDOP = 4                        -- Limit parallelism
+);
+```
+
+### Columnstore Index for Analytics
+```sql
+-- Clustered columnstore for data warehouse tables
+CREATE CLUSTERED COLUMNSTORE INDEX CCI_FactSales
+ON dbo.FactSales
+WITH (
+    MAXDOP = 4,
+    COMPRESSION_DELAY = 0  -- Compress immediately (or use minutes for hot data)
+);
+
+-- Non-clustered columnstore for OLTP with analytics
+CREATE NONCLUSTERED COLUMNSTORE INDEX NCCI_Orders_Analytics
+ON dbo.Orders (OrderDate, CustomerID, ProductID, Quantity, Amount)
+WHERE OrderDate >= '2024-01-01';  -- Filter for recent data only
+```
+
+### Filtered Index for Specific Queries
+```sql
+-- Index only active records (common pattern)
+CREATE NONCLUSTERED INDEX IX_Customers_Active
+ON dbo.Customers (LastName, FirstName)
+INCLUDE (Email, Phone)
+WHERE IsActive = 1 AND DeletedDate IS NULL;
+
+-- Index for date range queries
+CREATE NONCLUSTERED INDEX IX_Orders_Recent
+ON dbo.Orders (OrderDate, CustomerID)
+INCLUDE (TotalAmount, Status)
+WHERE OrderDate >= '2024-01-01';
+```
+
+---
+
+## 5. Real-World Examples
+
+### Upsert Pattern with MERGE
+```sql
+-- Efficient upsert (insert or update)
+MERGE INTO dbo.ProductInventory AS target
+USING (
+    SELECT ProductID, Quantity, LastUpdated
+    FROM @NewInventoryData
+) AS source
+ON target.ProductID = source.ProductID
+WHEN MATCHED AND source.LastUpdated > target.LastUpdated THEN
+    UPDATE SET 
+        Quantity = source.Quantity,
+        LastUpdated = source.LastUpdated
+WHEN NOT MATCHED BY TARGET THEN
+    INSERT (ProductID, Quantity, LastUpdated)
+    VALUES (source.ProductID, source.Quantity, source.LastUpdated)
+WHEN NOT MATCHED BY SOURCE THEN
+    DELETE
+OUTPUT 
+    $action AS Action,
+    INSERTED.ProductID,
+    DELETED.ProductID AS OldProductID;
+```
+
+### Pagination with OFFSET-FETCH
+```sql
+-- Efficient pagination (better than ROW_NUMBER for large datasets)
+DECLARE @PageNumber INT = 5;
+DECLARE @PageSize INT = 20;
+
+SELECT 
+    ProductID,
+    ProductName,
+    Price,
+    CategoryName
+FROM dbo.Products p
+INNER JOIN dbo.Categories c ON p.CategoryID = c.CategoryID
+WHERE p.IsActive = 1
+ORDER BY p.ProductName
+OFFSET (@PageNumber - 1) * @PageSize ROWS
+FETCH NEXT @PageSize ROWS ONLY;
+```
+
+### Dynamic Search with Optional Parameters
+```sql
+-- Efficient dynamic search (avoids parameter sniffing)
+CREATE PROCEDURE dbo.SearchProducts
+    @ProductName NVARCHAR(100) = NULL,
+    @CategoryID INT = NULL,
+    @MinPrice DECIMAL(10,2) = NULL,
+    @MaxPrice DECIMAL(10,2) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT 
+        ProductID,
+        ProductName,
+        Price,
+        CategoryName
+    FROM dbo.Products p
+    INNER JOIN dbo.Categories c ON p.CategoryID = c.CategoryID
+    WHERE 
+        (@ProductName IS NULL OR p.ProductName LIKE '%' + @ProductName + '%')
+        AND (@CategoryID IS NULL OR p.CategoryID = @CategoryID)
+        AND (@MinPrice IS NULL OR p.Price >= @MinPrice)
+        AND (@MaxPrice IS NULL OR p.Price <= @MaxPrice)
+    ORDER BY p.ProductName
+    OPTION (RECOMPILE);  -- Prevents parameter sniffing issues
+END;
+```
+
+### Temporal Table for Audit History
+```sql
+-- Create temporal table with history
+CREATE TABLE dbo.Employee
+(
+    EmployeeID INT PRIMARY KEY,
+    Name NVARCHAR(100) NOT NULL,
+    Salary DECIMAL(10,2) NOT NULL,
+    Department NVARCHAR(50) NOT NULL,
+    ValidFrom DATETIME2 GENERATED ALWAYS AS ROW START NOT NULL,
+    ValidTo DATETIME2 GENERATED ALWAYS AS ROW END NOT NULL,
+    PERIOD FOR SYSTEM_TIME (ValidFrom, ValidTo)
+)
+WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = dbo.EmployeeHistory));
+
+-- Query historical data
+SELECT * FROM dbo.Employee
+FOR SYSTEM_TIME AS OF '2024-01-01 12:00:00';
+
+-- Query changes between dates
+SELECT * FROM dbo.Employee
+FOR SYSTEM_TIME BETWEEN '2024-01-01' AND '2024-12-31'
+WHERE EmployeeID = 123;
+```
+
+### JSON Data Handling
+```sql
+-- Parse JSON array into table
+DECLARE @json NVARCHAR(MAX) = N'[
+    {"id": 1, "name": "John", "email": "john@example.com"},
+    {"id": 2, "name": "Jane", "email": "jane@example.com"}
+]';
+
+SELECT *
+FROM OPENJSON(@json)
+WITH (
+    id INT '$.id',
+    name NVARCHAR(100) '$.name',
+    email NVARCHAR(100) '$.email'
+);
+
+-- Convert query results to JSON
+SELECT 
+    CustomerID,
+    CustomerName,
+    (
+        SELECT OrderID, OrderDate, TotalAmount
+        FROM Orders o
+        WHERE o.CustomerID = c.CustomerID
+        FOR JSON PATH
+    ) AS Orders
+FROM Customers c
+FOR JSON PATH, ROOT('customers');
+```
+
+---
+
+## 6. Common Patterns & Anti-Patterns
+
+### ✅ DO: Use EXISTS for existence checks
+```sql
+-- Efficient
+SELECT c.CustomerID, c.CustomerName
+FROM Customers c
+WHERE EXISTS (
+    SELECT 1 FROM Orders o WHERE o.CustomerID = c.CustomerID
+);
+```
+
+### ❌ DON'T: Use COUNT(*) for existence checks
+```sql
+-- Inefficient
+SELECT c.CustomerID, c.CustomerName
+FROM Customers c
+WHERE (SELECT COUNT(*) FROM Orders o WHERE o.CustomerID = c.CustomerID) > 0;
+```
+
+### ✅ DO: Use UNION ALL when duplicates are acceptable
+```sql
+-- Faster (no duplicate elimination)
+SELECT ProductID, ProductName FROM ActiveProducts
+UNION ALL
+SELECT ProductID, ProductName FROM ArchivedProducts;
+```
+
+### ❌ DON'T: Use UNION unnecessarily
+```sql
+-- Slower (eliminates duplicates)
+SELECT ProductID, ProductName FROM ActiveProducts
+UNION
+SELECT ProductID, ProductName FROM ArchivedProducts;
+```
+
+### ✅ DO: Use table-valued parameters for bulk operations
+```sql
+-- Efficient bulk insert
+CREATE TYPE dbo.ProductTableType AS TABLE (
+    ProductName NVARCHAR(100),
+    Price DECIMAL(10,2)
+);
+
+CREATE PROCEDURE dbo.BulkInsertProducts
+    @Products dbo.ProductTableType READONLY
+AS
+BEGIN
+    INSERT INTO dbo.Products (ProductName, Price)
+    SELECT ProductName, Price FROM @Products;
+END;
+```
+
+### ❌ DON'T: Use cursors for set-based operations
+```sql
+-- Inefficient (row-by-row processing)
+DECLARE @ProductID INT;
+DECLARE product_cursor CURSOR FOR SELECT ProductID FROM Products;
+OPEN product_cursor;
+FETCH NEXT FROM product_cursor INTO @ProductID;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    -- Process each row
+    FETCH NEXT FROM product_cursor INTO @ProductID;
+END;
+CLOSE product_cursor;
+DEALLOCATE product_cursor;
+```
+
+---
+
+## 7. Troubleshooting Guide
+
+### Query Running Slow
+1. Check execution plan for table scans
+2. Look for missing indexes (DMV query above)
+3. Check for implicit conversions
+4. Verify statistics are up to date: `UPDATE STATISTICS TableName WITH FULLSCAN;`
+5. Check for parameter sniffing (use OPTION (RECOMPILE))
+
+### High CPU Usage
+1. Find top CPU queries (DMV query above)
+2. Check for missing indexes
+3. Look for scalar UDFs (replace with inline TVFs)
+4. Check for excessive recompilations
+
+### Blocking Issues
+1. Use blocking chain query (above)
+2. Check transaction isolation level
+3. Keep transactions short
+4. Use READ COMMITTED SNAPSHOT isolation
+5. Consider NOLOCK hint for reporting queries (dirty reads acceptable)
+
+### Deadlocks
+1. Enable deadlock trace flag: `DBCC TRACEON(1222, -1);`
+2. Check SQL Server error log for deadlock graphs
+3. Access tables in same order across queries
+4. Keep transactions short
+5. Use appropriate isolation level
+
+### Memory Pressure
+1. Check buffer pool usage: `SELECT * FROM sys.dm_os_memory_clerks ORDER BY pages_kb DESC;`
+2. Monitor plan cache: `SELECT * FROM sys.dm_exec_cached_plans;`
+3. Clear plan cache if needed: `DBCC FREEPROCCACHE;`
+4. Check for memory leaks in CLR objects
+
+---
+
+## Quick Reference: Common T-SQL Functions
+
+### String Functions
+- `STRING_AGG(column, ',')` - Concatenate values
+- `STRING_SPLIT('a,b,c', ',')` - Split string to rows
+- `CONCAT_WS(',', col1, col2)` - Concatenate with separator
+- `TRIM(column)` - Remove leading/trailing spaces
+- `TRANSLATE(column, 'abc', '123')` - Replace characters
+
+### Date Functions
+- `DATEADD(DAY, 7, GETDATE())` - Add days
+- `DATEDIFF(DAY, date1, date2)` - Difference in days
+- `EOMONTH(date)` - End of month
+- `FORMAT(date, 'yyyy-MM-dd')` - Format date
+- `DATEFROMPARTS(2024, 1, 15)` - Construct date
+
+### Aggregate Functions
+- `STRING_AGG(column, ',') WITHIN GROUP (ORDER BY column)` - Ordered concatenation
+- `COUNT_BIG(*)` - Count returning BIGINT
+- `APPROX_COUNT_DISTINCT(column)` - Fast approximate distinct count
+- `STDEV(column)` - Standard deviation
+- `VAR(column)` - Variance
+
+### Window Functions
+- `ROW_NUMBER() OVER (PARTITION BY col ORDER BY col2)` - Sequential number
+- `RANK() OVER (ORDER BY col)` - Rank with gaps
+- `DENSE_RANK() OVER (ORDER BY col)` - Rank without gaps
+- `LEAD(column, 1) OVER (ORDER BY date)` - Next row value
+- `LAG(column, 1) OVER (ORDER BY date)` - Previous row value
+- `FIRST_VALUE(column) OVER (PARTITION BY col ORDER BY col2)` - First in partition
+- `LAST_VALUE(column) OVER (PARTITION BY col ORDER BY col2 ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)` - Last in partition
+
+---
+
+## Performance Tuning Checklist
+
+- [ ] Indexes exist on foreign keys
+- [ ] Indexes exist on WHERE clause columns
+- [ ] Indexes exist on JOIN columns
+- [ ] Statistics are up to date
+- [ ] No table scans in execution plan
+- [ ] No implicit conversions
+- [ ] Using appropriate data types
+- [ ] Avoiding SELECT *
+- [ ] Using EXISTS instead of IN for large subqueries
+- [ ] Transactions are kept short
+- [ ] No cursors for set-based operations
+- [ ] Using UNION ALL instead of UNION when possible
+- [ ] Parameterized queries (no SQL injection risk)
+- [ ] Appropriate isolation level
+- [ ] No scalar UDFs in SELECT list
+- [ ] Using covering indexes where beneficial
+
+---
+
+## End of SQL Server AI Reference Pack

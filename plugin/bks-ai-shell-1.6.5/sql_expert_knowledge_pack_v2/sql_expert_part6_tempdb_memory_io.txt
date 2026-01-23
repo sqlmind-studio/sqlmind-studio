@@ -1,0 +1,19 @@
+####################################################################################################
+# PART 6: TempDB, Memory, and I/O
+####################################################################################################
+## TempDB
+* Files: 1 per logical CPU up to 8, equal sizes, trace flag 1117/1118 legacy considerations.
+* Pre-size TempDB, enable TF if <=2016; use fast storage; avoid spills.
+## Memory
+* Track clerks: sys.dm_os_memory_clerks; workspace grants: sys.dm_exec_query_memory_grants.
+* Set max server memory; leave OS headroom.
+## I/O
+* Monitor file stats: sys.dm_io_virtual_file_stats; latency targets: <5ms log, <10–20ms data typical.
+-- File stats
+SELECT DB_NAME(vfs.database_id) AS db, mf.name, vfs.num_of_reads, vfs.io_stall_read_ms,
+       vfs.num_of_writes, vfs.io_stall_write_ms
+FROM sys.dm_io_virtual_file_stats(NULL,NULL) vfs
+JOIN sys.master_files mf ON vfs.database_id=mf.database_id AND vfs.file_id=mf.file_id;
+####################################################################################################
+# END PART 6
+####################################################################################################

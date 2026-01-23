@@ -1,0 +1,14 @@
+####################################################################################################
+# PART 10: Azure SQL / Managed Instance / Serverless
+####################################################################################################
+## Models
+* Azure SQL DB (single/elastic pool), Managed Instance, SQL on Azure VM.
+## Performance
+* DTU vs vCore; IO perf depends on service tier; watch tempdb limits in PaaS.
+## Connectivity
+* MI supports cross-db/linked servers; SQL DB limited; use Elastic Jobs for automation.
+## Features
+* Automatic tuning (force last good plan), geo-replication, serverless auto-pause.
+####################################################################################################
+# END PART 10
+####################################################################################################

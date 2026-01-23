@@ -1,0 +1,199 @@
+<template>
+  <div class="shell-app">
+    <div v-if="page === 'starting'" v-show="showLoading" class="not-ready">
+      <h1>AI Mode</h1>
+      <div class="progress-bar"></div>
+    </div>
+    <ChatHistory
+      v-if="page === 'chat-interface' && isHistoryView"
+      @close="noop"
+      @restore="noop"
+      @cleared="noop"
+    />
+    <ChatInterface v-else-if="page === 'chat-interface'" :initialMessages="messages" :openaiApiKey="openaiApiKey"
+      :anthropicApiKey="anthropicApiKey" :googleApiKey="googleApiKey" @manage-models="handleManageModels"
+      @open-configuration="handleOpenConfiguration" />
+    <div id="configuration-popover" :class="{ active: showConfiguration }" v-kbd-trap.autofocus="showConfiguration">
+      <Configuration :reactivePage="configurationPage" @close="closeConfiguration" />
+    </div>
+    <div class="onboarding-screen-popover-container" v-if="showOnboarding">
+      <div class="onboarding-screen-popover" v-kbd-trap="true">
+        <button class="btn close-btn" @click="closeOnboardingScreen">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+        <OnboardingScreen @submit="closeOnboardingScreen" @open-provider-config="closeOnboardingScreenAndOpenProviderConfig" />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+import ChatInterface from "./components/ChatInterface.vue";
+import ChatHistory from "./components/ChatHistory.vue";
+import { useChatStore } from "@/stores/chat";
+import { useConfigurationStore } from "@/stores/configuration";
+import { useInternalDataStore } from "@/stores/internalData";
+import { useTabState } from "@/stores/tabState";
+import { useChatHistoryStore } from "@/stores/chatHistory";
+import { mapState, mapActions, mapGetters } from "pinia";
+import Configuration, {
+  PageId as ConfigurationPageId,
+} from "@/components/configuration/Configuration.vue";
+import OnboardingScreen from "./components/OnboardingScreen.vue";
+import { getData, notify } from "@sqlmindstudio/plugin";
+
+type Page = "starting" | "chat-interface";
+
+export default {
+  components: {
+    ChatInterface,
+    ChatHistory,
+    Configuration,
+    OnboardingScreen,
+  },
+
+  data() {
+    return {
+      page: "starting" as Page,
+      showOnboarding: false,
+      showConfiguration: false,
+      error: "" as unknown,
+      showLoading: false,
+      apiKeysChanged: false,
+      configurationPage: "general" as ConfigurationPageId,
+    };
+  },
+
+  async mounted() {
+    // Show loading bar after 500ms if not ready
+    const loadingTimer = setTimeout(() => {
+      this.showLoading = true;
+    }, 500);
+
+    await this.reloadWhenStuck();
+
+    try {
+      await this.initialize();
+      
+      // Initialize chat history early
+      const chatHistoryStore = useChatHistoryStore();
+      // In history-only iframe view, the ChatHistory component itself does a forced refresh.
+      // Avoid doing a redundant load here.
+      if (!this.isHistoryView) {
+        await chatHistoryStore.loadSessions();
+        console.log('[App] Chat history initialized with', chatHistoryStore.sessions.length, 'sessions');
+      }
+      
+      await this.$nextTick();
+
+      if (this.isFirstTimeUser && !this.apiKeyExists) {
+        this.showOnboarding = true;
+      }
+
+      this.page = "chat-interface";
+
+    } catch (e) {
+      this.showConfiguration = true;
+      this.error = e;
+      const error = e instanceof Error ? e : new Error(String(e));
+      notify("pluginError", {
+        message: `Failed to initialize: ${error.message}`,
+        name: error.name,
+        stack: error.stack,
+      });
+    } finally {
+      clearTimeout(loadingTimer);
+    }
+  },
+
+  computed: {
+    ...mapState(useTabState, ["messages"]),
+    ...mapState(useConfigurationStore, {
+      openaiApiKey: "providers.openai.apiKey",
+      anthropicApiKey: "providers.anthropic.apiKey",
+      googleApiKey: "providers.google.apiKey",
+    }),
+    ...mapGetters(useConfigurationStore, ["apiKeyExists"]),
+    ...mapGetters(useInternalDataStore, ["isFirstTimeUser"]),
+    isHistoryView(): boolean {
+      try {
+        const params = new URLSearchParams(String(window.location.search || ''));
+        return params.get('view') === 'history';
+      } catch (_) {
+        return false;
+      }
+    },
+  },
+
+  methods: {
+    ...mapActions(useConfigurationStore, ["configure"]),
+    ...mapActions(useInternalDataStore, ["setInternal"]),
+    ...mapActions(useChatStore, ["initialize"]),
+    noop() {},
+    closeOnboardingScreen() {
+      this.showOnboarding = false;
+      this.page = "chat-interface";
+      this.setInternal("isFirstTimeUser", false);
+    },
+    async closeOnboardingScreenAndOpenProviderConfig() {
+      this.closeOnboardingScreen();
+      this.openModelsConfig();
+      await this.$nextTick();
+      const apiKeys = document.querySelector("#providers-configuration-api-keys");
+      apiKeys?.scrollIntoView();
+    },
+    openModelsConfig() {
+      this.configurationPage = "models";
+      this.showConfiguration = true;
+    },
+    handleManageModels() {
+      this.openModelsConfig();
+    },
+    handleOpenConfiguration() {
+      this.configurationPage = "general";
+      this.showConfiguration = true;
+    },
+    closeConfiguration() {
+      this.showConfiguration = false;
+    },
+    // In SQLMind Studio v5.3.3 and lower, the requests from plugins are
+    // sometimes not responded due to a race condition.
+    // See https://github.com/sqlmind-studio/sqlmind-studio/pull/3473
+    async reloadWhenStuck() {
+      // Track current minute for resetting attempts each minute
+      const currentMinute = Math.floor(Date.now() / 60000);
+      const storedData = JSON.parse(localStorage.getItem('reloadData') || '{"attempts": 0, "minute": 0}');
+
+      // Reset attempts if we're in a new minute, otherwise use stored attempts
+      let attempts = storedData.minute === currentMinute ? storedData.attempts : 0;
+      // Incremental delay: 1s, 2s, 3s, 4s, 5s (max)
+      const reloadDelay = Math.min(1000 + (attempts * 1000), 5000);
+
+      const reloadTimer = setTimeout(() => {
+        // Store incremented attempts for next reload
+        localStorage.setItem('reloadData', JSON.stringify({
+          attempts: attempts + 1,
+          minute: currentMinute
+        }));
+        window.location.reload();
+      }, reloadDelay);
+      try {
+        await getData();
+      } catch (e) {
+      } finally {
+        // Cancel reload if getData() succeeds or fails quickly
+        clearTimeout(reloadTimer);
+      }
+    },
+  },
+};
+</script>
+
+<style lang="scss" scoped>
+.shell-app {
+  height: 100vh;
+  width: 100%;
+  background-color: #0f0f0f; // Fallback - matches query-editor-bg
+  background-color: var(--query-editor-bg, #0f0f0f);
+}
+</style>

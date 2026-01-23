@@ -1,0 +1,337 @@
+####################################################################################################
+# PART 10: Azure SQL / Managed Instance / Serverless
+####################################################################################################
+## Models
+* Azure SQL DB (single/elastic pool), Managed Instance, SQL on Azure VM.
+## Performance
+* DTU vs vCore; IO perf depends on service tier; watch tempdb limits in PaaS.
+## Connectivity
+* MI supports cross-db/linked servers; SQL DB limited; use Elastic Jobs for automation.
+## Features
+* Automatic tuning (force last good plan), geo-replication, serverless auto-pause.
+####################################################################################################
+# END PART 10
+####################################################################################################
+
+
+####################################################################################################
+# PART 11: Troubleshooting Cookbook
+####################################################################################################
+## Slow Server Checklist
+1) Check waits; 2) Active requests; 3) Top resource queries; 4) File IO latency;
+5) Blocking/locks; 6) Memory pressure; 7) TempDB contention; 8) Plan regressions (Query Store).
+## CPU 100%
+* Find top workers via sys.dm_exec_requests/time_stats; tune plans; raise cost threshold; set MAXDOP.
+## IO Latency
+* vfs DMV; separate data/log/tempdb; enable TF 3427/3467 legacy cautiously; compression and page verify.
+## Log Growth Storm
+* Right-size log, fixed growth MB, frequent log backups; avoid autogrow tiny increments.
+## Parameter Sniffing
+* RECOMPILE for volatile OLTP; OPTIMIZE FOR typical value; plan guides (legacy) or Forced Plan (QS).
+####################################################################################################
+# END PART 11
+####################################################################################################
+
+
+####################################################################################################
+# PART 12: Reference DMV Queries & Maintenance Snippets
+####################################################################################################
+-- Blocking chain
+WITH L AS (SELECT request_session_id AS sid, blocking_session_id AS bsid FROM sys.dm_tran_locks GROUP BY request_session_id, blocking_session_id)
+SELECT r.session_id, r.status, r.wait_type, r.blocking_session_id, t.text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+ORDER BY r.total_elapsed_time DESC;
+-- Stats staleness (approximate)
+SELECT OBJECT_NAME(i.object_id) AS TableName, s.name AS StatName, STATS_DATE(s.object_id,s.stats_id) AS LastUpdated
+FROM sys.stats s JOIN sys.indexes i ON s.object_id=i.object_id AND s.stats_id=i.index_id
+WHERE OBJECTPROPERTY(s.object_id,'IsUserTable')=1
+ORDER BY LastUpdated;
+-- Index rebuild template
+ALTER INDEX ALL ON dbo.Table WITH (ONLINE=ON) REBUILD;
+-- Weekly full, daily diff, 15-min log strategy (example)—adjust to RPO/RTO.
+####################################################################################################
+# END PART 12
+####################################################################################################
+
+
+####################################################################################################
+# SQL SERVER EXPERT KNOWLEDGE PACK - PART 1
+# Focus: Core Architecture, Storage Engine, and Query Processor
+# Compatible with SQL Server 2012 – 2022
+####################################################################################################
+## SECTION 1: SQL SERVER ARCHITECTURE OVERVIEW
+* Engines: Relational (Query Processor) and Storage Engine.
+* SQLOS handles schedulers, memory, I/O. Buffer Pool caches 8KB pages.
+* Lazy Writer frees pages; Checkpoint flushes dirty pages; Log Writer persists WAL.
+* Pages: data/index/text/IAM/GAM/SGAM/PFS; 8 pages = 1 extent (64KB).
+* Recovery models: SIMPLE, FULL, BULK_LOGGED. WAL ensures durability.
+* Transaction log: sequential with VLFs. Keep sane growth, avoid excessive VLFs.
+* TempDB: recreated each start. Use multiple data files (up to 8), TF1118 (<=2016).
+* Memory: watch sys.dm_os_memory_clerks; set max server memory.
+* Schedulers: one per CPU; check sys.dm_os_schedulers for runnable_tasks_count.
+* Spinlocks/latches: diagnose via sys.dm_os_spinlock_stats.
+## SECTION 2: QUERY PROCESSOR (RELATIONAL ENGINE)
+* Phases: Parse → Bind → Optimize → Execute. Plans cached in sys.dm_exec_cached_plans.
+* Parameter sniffing mitigations: OPTION(RECOMPILE), OPTIMIZE FOR, local vars, OPTIMIZE FOR UNKNOWN.
+* Adaptive Query Processing (2017+): memory grant feedback, adaptive joins, interleaved exec.
+* Batch mode on rowstore (2019+). Cardinality Estimator legacy vs new (120+); scoped config to toggle.
+## SECTION 3: EXECUTION PLAN BASICS
+* Operators: seeks, scans, NL/Merge/Hash joins. Use SET STATISTICS IO/TIME and actual plans.
+* Warnings: spills, implicit conversions, missing indexes, CE issues.
+## SECTION 4: STATISTICS & OPTIMIZATION
+* Auto create/update; thresholds: <500 → 500; >=500 → 20%+500. Consider ASYNC.
+* FULLSCAN for skewed data. Filtered stats for subsets.
+* Hints: RECOMPILE, MAXDOP, FORCE ORDER (sparingly).
+## SECTION 5: COST-BASED OPTIMIZER DETAILS
+* Trivial vs full optimization; timeouts use best-so-far plan.
+* Plan reuse rules; Query Store forced plans to avoid regressions.
+## SECTION 6: PARALLELISM
+* cost threshold (default 5—raise it). MAXDOP per workload; monitor CXPACKET/CXCONSUMER.
+## SECTION 7: MEMORY GRANT TUNING
+* Check sys.dm_exec_query_memory_grants; fix spills via stats/indexes/query rewrite; feedback (2017+).
+## SECTION 8: COMMON PERFORMANCE DMVs
+-- Top resource queries
+SELECT TOP 10 total_elapsed_time/1000 AS total_ms,total_logical_reads,execution_count,
+       SUBSTRING(qt.text,1,2000) AS query_text
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+ORDER BY total_elapsed_time DESC;
+-- Active requests
+SELECT session_id,status,blocking_session_id,wait_type,cpu_time,total_elapsed_time
+FROM sys.dm_exec_requests;
+-- Waits
+SELECT wait_type,waiting_tasks_count,wait_time_ms
+FROM sys.dm_os_wait_stats WHERE wait_type NOT LIKE 'SLEEP%'
+ORDER BY wait_time_ms DESC;
+## SECTION 9: OPTIMIZATION CHECKLIST
+* Fresh stats; align datatypes; avoid functions on indexed columns; covering indexes; avoid scalar UDFs;
+* Check waits; use Query Store; tune MAXDOP + cost threshold; benchmark with STATISTICS IO/TIME.
+####################################################################################################
+# END OF PART 1
+####################################################################################################
+
+
+####################################################################################################
+# SQL SERVER EXPERT KNOWLEDGE PACK - PART 2
+# Focus: Indexing, Wait Stats, and Execution Diagnostics
+# Compatible with SQL Server 2012 – 2022
+####################################################################################################
+## SECTION 10: INDEXING MASTERCLASS
+* Clustered index: narrow, static, increasing key preferred. Avoid random GUID unless NEWSEQUENTIALID().
+* Nonclustered: filter/seek columns as keys; use INCLUDE for covering.
+* Filtered indexes for stable predicates; Indexed views (SCHEMABINDING) for persistent aggregates.
+* Columnstore (2016+): CCI for warehouse; NCCI for hybrid OLTP+analytics; monitor row group DMVs.
+* Maintenance: >30% rebuild; 10–30% reorganize; sample fragmentation via dm_db_index_physical_stats.
+* Compression: ROW/PAGE—trade CPU for I/O. Consider on cold/large tables.
+* Heaps cause forwarding pointers—prefer clustered indexes.
+## SECTION 11: INDEX ANALYSIS & TROUBLESHOOTING
+-- Missing indexes (top)
+SELECT TOP 10 mid.statement, mid.equality_columns, mid.inequality_columns,
+       migs.avg_total_user_cost, migs.avg_user_impact
+FROM sys.dm_db_missing_index_details mid
+JOIN sys.dm_db_missing_index_groups mig ON mid.index_handle=mig.index_handle
+JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle=mig.index_group_handle
+ORDER BY migs.avg_user_impact DESC;
+-- Usage stats
+SELECT OBJECT_NAME(i.object_id) AS TableName, i.name AS IndexName,
+       user_seeks,user_scans,user_lookups,user_updates
+FROM sys.dm_db_index_usage_stats s
+JOIN sys.indexes i ON s.object_id=i.object_id AND s.index_id=i.index_id
+WHERE OBJECTPROPERTY(i.object_id,'IsUserTable')=1;
+## SECTION 12: WAIT STATS DIAGNOSTICS
+* Common waits: CXPACKET/CXCONSUMER (parallelism), PAGEIOLATCH_* (disk), SOS_SCHEDULER_YIELD (CPU),
+  LCK_M_* (locks), WRITELOG (log I/O), ASYNC_NETWORK_IO (client fetch), THREADPOOL (workers),
+  RESOURCE_SEMAPHORE (memory grants), PAGELATCH_* (TempDB).
+-- Top waits
+SELECT TOP 15 wait_type, wait_time_ms/1000.0 AS seconds, waiting_tasks_count,
+       wait_time_ms/NULLIF(waiting_tasks_count,0) AS avg_ms_per_wait
+FROM sys.dm_os_wait_stats WHERE wait_type NOT LIKE 'SLEEP%'
+ORDER BY wait_time_ms DESC;
+## SECTION 13: EXECUTION PLAN TROUBLESHOOTING
+* Eliminate key lookups with covering indexes; align datatypes to avoid CONVERT_IMPLICIT; avoid scalar UDFs (2019+ inlining helps).
+* Consider ORDER BY indexes for Top-N sorts.
+## SECTION 15: INDEX & PLAN MAINTENANCE CHECKLIST
+* Remove duplicate/unused indexes, add covering for hot queries, update stats after large loads,
+  use Query Store, validate fillfactor, schedule rebuilds off-peak, automate via Ola or dbatools.
+####################################################################################################
+# END OF PART 2
+####################################################################################################
+
+
+####################################################################################################
+# PART 3: Concurrency, Transactions, Isolation, Deadlocks (SQL Server 2012–2022)
+####################################################################################################
+## Locks & Latches
+* Lock types: S, U, X, IS/IX/SIX; ranges (RangeS-S/U/X) under SERIALIZABLE.
+* Lock escalation: per object to table/partition; use trace flags cautiously; prefer good indexes.
+* Latches synchronize in-memory pages; PAGELATCH_* hot spots common in TempDB.
+## Isolation Levels
+* READ UNCOMMITTED (dirty), READ COMMITTED (default), RCSI (db option), SNAPSHOT, REPEATABLE READ, SERIALIZABLE.
+* RCSI vs SNAPSHOT: RCSI is statement-level; SNAPSHOT is transaction-level. Both rely on version store in TempDB.
+* Enable:
+ALTER DATABASE db SET READ_COMMITTED_SNAPSHOT ON;
+ALTER DATABASE db SET ALLOW_SNAPSHOT_ISOLATION ON;
+## Deadlocks
+* Detect via system_health XE or ring_buffer; capture deadlock graph XML.
+* Common causes: inconsistent access order, missing indexes, long transactions, serializable range locks.
+* Fixes: shorter transactions, consistent order, appropriate indexes, retry logic for victims.
+## Blocking & Troubleshooting
+-- Who is blocking?
+SELECT r.session_id,r.status,r.blocking_session_id,r.wait_type,r.wait_time,r.cpu_time,r.logical_reads,t.text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.blocking_session_id <> 0 OR r.wait_type LIKE 'LCK%';
+-- Lock snapshot
+SELECT * FROM sys.dm_tran_locks;
+## Snapshot Pitfalls
+* Errors when changing isolation mid-transaction; ensure BEGIN TRAN under desired level.
+* Version store bloat → monitor sys.dm_tran_version_store_space_usage; size TempDB accordingly.
+## Retry Pattern (App Side)
+* Catch 1205 (deadlock) and retry with backoff; keep transactions short; avoid user interaction mid-transaction.
+####################################################################################################
+# END PART 3
+####################################################################################################
+
+
+####################################################################################################
+# PART 4: Partitioning & Compression
+####################################################################################################
+## Design
+* Partition by RANGE RIGHT/LEFT on aligned filegroups. Keep boundary values immutable.
+* Aligned indexes: same partition scheme as base table for SWITCH operations.
+## Sliding Window
+* Load to staging table; ALTER TABLE SWITCH INTO active partition; MERGE for dimension updates.
+## Maintenance
+-- Check partition row counts
+SELECT p.partition_number, ps.name AS scheme_name, fg.name AS filegroup, SUM(a.total_pages)*8/1024 AS MB
+FROM sys.partitions p
+JOIN sys.allocation_units a ON p.hobt_id=a.container_id
+JOIN sys.indexes i ON p.object_id=i.object_id AND p.index_id=i.index_id
+JOIN sys.partition_schemes ps ON i.data_space_id=ps.data_space_id
+JOIN sys.filegroups fg ON ps.data_space_id=fg.data_space_id
+WHERE i.object_id=OBJECT_ID('dbo.Fact')
+GROUP BY p.partition_number, ps.name, fg.name
+ORDER BY p.partition_number;
+## Compression
+* ROW for OLTP, PAGE for cold data; measure via sp_estimate_data_compression_savings.
+####################################################################################################
+# END PART 4
+####################################################################################################
+
+
+####################################################################################################
+# PART 5: Query Store & Automatic Tuning
+####################################################################################################
+## Enable & Configure
+ALTER DATABASE CurrentDB SET QUERY_STORE = ON;
+ALTER DATABASE CurrentDB SET QUERY_STORE (OPERATION_MODE = READ_WRITE, INTERVAL_LENGTH_MINUTES = 15);
+## Use Cases
+* Track regressions, force known-good plans, see top resource consumers over time.
+-- Top regressed queries
+SELECT TOP 20 qsq.query_id, qsq.count_executions, rs.avg_duration
+FROM sys.query_store_query_text qst
+JOIN sys.query_store_query qsq ON qst.query_text_id=qsq.query_text_id
+JOIN sys.query_store_plan p ON qsq.query_id=p.query_id
+JOIN sys.query_store_runtime_stats rs ON p.plan_id=rs.plan_id
+ORDER BY rs.avg_duration DESC;
+## Force/Unforce Plan
+EXEC sp_query_store_force_plan @query_id=123,@plan_id=456;
+EXEC sp_query_store_unforce_plan @query_id=123,@plan_id=456;
+## Automatic Tuning (2017+/Azure)
+ALTER DATABASE SCOPED CONFIGURATION SET AUTOMATIC_TUNING = AUTO;
+####################################################################################################
+# END PART 5
+####################################################################################################
+
+
+####################################################################################################
+# PART 6: TempDB, Memory, and I/O
+####################################################################################################
+## TempDB
+* Files: 1 per logical CPU up to 8, equal sizes, trace flag 1117/1118 legacy considerations.
+* Pre-size TempDB, enable TF if <=2016; use fast storage; avoid spills.
+## Memory
+* Track clerks: sys.dm_os_memory_clerks; workspace grants: sys.dm_exec_query_memory_grants.
+* Set max server memory; leave OS headroom.
+## I/O
+* Monitor file stats: sys.dm_io_virtual_file_stats; latency targets: <5ms log, <10–20ms data typical.
+-- File stats
+SELECT DB_NAME(vfs.database_id) AS db, mf.name, vfs.num_of_reads, vfs.io_stall_read_ms,
+       vfs.num_of_writes, vfs.io_stall_write_ms
+FROM sys.dm_io_virtual_file_stats(NULL,NULL) vfs
+JOIN sys.master_files mf ON vfs.database_id=mf.database_id AND vfs.file_id=mf.file_id;
+####################################################################################################
+# END PART 6
+####################################################################################################
+
+
+####################################################################################################
+# PART 7: Backup/Restore & HADR (Always On)
+####################################################################################################
+## Backups
+* Full, Differential, Log; use COPY_ONLY for ad-hoc fulls; compress backups.
+-- Example
+BACKUP DATABASE Db TO DISK='E:\backups\Db_full.bak' WITH INIT, COMPRESSION, CHECKSUM;
+BACKUP LOG Db TO DISK='E:\backups\Db_log.trn' WITH INIT, COMPRESSION, CHECKSUM;
+## Restore
+-- Inspect backup
+RESTORE FILELISTONLY FROM DISK='E:\backups\Db_full.bak';
+-- Move files
+RESTORE DATABASE Db FROM DISK='E:\backups\Db_full.bak'
+WITH MOVE 'Db' TO 'D:\data\Db.mdf',
+     MOVE 'Db_log' TO 'D:\log\Db.ldf', NORECOVERY;
+## Always On AGs (2012+)
+* Synchronous (HA) vs Asynchronous (DR); automatic failover with synchronous + healthy; listener for routing.
+* Quorum & votes via WSFC; test failovers; read-only routing lists.
+## Log Shipping & Mirroring (Legacy)
+* Simple, reliable DR; monitor latency, copy/restore jobs; mirroring deprecated in newer versions.
+####################################################################################################
+# END PART 7
+####################################################################################################
+
+
+####################################################################################################
+# PART 8: Security & Encryption
+####################################################################################################
+## Principals & Securables
+* Use schemas; least privilege via roles; avoid dbo ownership where not needed.
+## Row-Level Security
+CREATE SECURITY POLICY dbo.Policy ADD FILTER PREDICATE dbo.fnTenantPredicate(TenantId) ON dbo.Table WITH (STATE=ON);
+## Dynamic Data Masking
+ALTER TABLE dbo.Customers ALTER COLUMN Email ADD MASKED WITH (FUNCTION='email()');
+## Always Encrypted
+* Client-side encryption; requires CEK/CMK; limits operations on encrypted columns.
+## TDE
+CREATE MASTER KEY ENCRYPTION BY PASSWORD='Strong!Pass1';
+CREATE CERTIFICATE TDECert WITH SUBJECT='TDE';
+CREATE DATABASE ENCRYPTION KEY WITH ALGORITHM = AES_256 ENCRYPTION BY SERVER CERTIFICATE TDECert;
+ALTER DATABASE Db SET ENCRYPTION ON;
+## Auditing
+* Use Extended Events/Audit for compliance; store to file target.
+####################################################################################################
+# END PART 8
+####################################################################################################
+
+
+####################################################################################################
+# PART 9: Monitoring & Automation
+####################################################################################################
+## Extended Events
+CREATE EVENT SESSION SlowQueries ON SERVER
+ADD EVENT sqlserver.rpc_completed(DURATION>100000),
+ADD EVENT sqlserver.sql_batch_completed(DURATION>100000)
+ADD TARGET package0.event_file(SET filename='E:\xe\slowqueries.xel')
+WITH (STARTUP_STATE=ON);
+ALTER EVENT SESSION SlowQueries ON SERVER STATE=START;
+## Agent Jobs
+* Separate operator alerts; retry policies; output to files; failure notifications.
+## dbatools / PowerShell (examples)
+# Install-Module dbatools; Test-DbaMaxMemory; Set-DbaMaxMemory; Invoke-DbaDiagnose
+## sp_Blitz family (Brent Ozar)
+* sp_Blitz, sp_BlitzCache, sp_BlitzIndex for health, plan, and index analysis.
+####################################################################################################
+# END PART 9
+####################################################################################################
+
+

@@ -1,0 +1,664 @@
+# First Responder Kit & Diagnostic Procedures - Complete Reference
+
+This document provides comprehensive documentation for Brent Ozar's First Responder Kit and other essential SQL Server diagnostic procedures.
+
+## sp_Blitz - Overall SQL Server Health Check
+
+**Purpose:** Comprehensive health check identifying configuration issues, security problems, and performance bottlenecks.
+
+**Basic Usage:**
+```sql
+EXEC sp_Blitz;
+```
+
+**Key Parameters:**
+
+@CheckUserDatabaseObjects (INT, default 1) - 0=skip user DB checks (faster), 1=check user DBs
+@CheckProcedureCache (INT, default 0) - 0=skip, 1=analyze cache (slower)
+@OutputType (VARCHAR(20), default 'TABLE') - 'TABLE', 'COUNT', 'MARKDOWN', 'NONE'
+@CheckProcedureCacheFilter (VARCHAR(10)) - NULL, 'CPU', 'Reads', 'Duration', 'ExecCount'
+@IgnorePrioritiesAbove (INT) - Only show issues with priority <= this number
+@IgnorePrioritiesBelow (INT) - Only show issues with priority >= this number
+@SkipChecksServer (NVARCHAR(256)) - Comma-separated check IDs to skip
+@OutputDatabaseName, @OutputSchemaName, @OutputTableName - For logging results
+
+**Common Examples:**
+```sql
+-- Quick health check
+EXEC sp_Blitz @CheckUserDatabaseObjects = 0;
+
+-- Comprehensive with cache analysis
+EXEC sp_Blitz @CheckProcedureCache = 1, @CheckProcedureCacheFilter = 'CPU';
+
+-- High priority issues only
+EXEC sp_Blitz @IgnorePrioritiesAbove = 50;
+
+-- Store results
+EXEC sp_Blitz @OutputDatabaseName = 'DBA', @OutputSchemaName = 'dbo', @OutputTableName = 'BlitzResults';
+```
+
+---
+
+## sp_BlitzFirst - Performance Snapshot & Wait Stats
+
+**Purpose:** Captures performance metrics and wait statistics to identify what SQL Server is waiting on.
+
+**Basic Usage:**
+```sql
+EXEC sp_BlitzFirst @Seconds = 30;
+```
+
+**Key Parameters:**
+
+@Seconds (INT, default 5) - Seconds between snapshots (0=single snapshot, 30-60 recommended)
+@OutputType (VARCHAR(20), default 'TABLE') - 'TABLE' or 'NONE'
+@ExpertMode (BIT, default 0) - 0=standard, 1=expert details
+@SinceStartup (BIT, default 0) - 0=delta, 1=cumulative since startup
+@ShowSleepingSPIDs (BIT, default 0) - 0=hide, 1=show sleeping sessions
+@AsOf (DATETIMEOFFSET) - View historical data from timestamp
+@OutputDatabaseName, @OutputSchemaName, @OutputTableName - For logging
+@OutputTableNameWaitStats, @OutputTableNameFileStats - Separate tables for detailed stats
+
+**Common Examples:**
+```sql
+-- 30-second performance snapshot
+EXEC sp_BlitzFirst @Seconds = 30;
+
+-- Expert mode with 60-second wait
+EXEC sp_BlitzFirst @Seconds = 60, @ExpertMode = 1;
+
+-- Current activity (no wait stats)
+EXEC sp_BlitzFirst @Seconds = 0;
+
+-- Log for trending
+EXEC sp_BlitzFirst @Seconds = 60, @OutputDatabaseName = 'DBA', @OutputSchemaName = 'dbo', @OutputTableName = 'BlitzFirstResults';
+```
+
+---
+
+## sp_BlitzCache - Query Performance Analysis
+
+**Purpose:** Analyzes plan cache to find problematic queries by CPU, reads, duration, executions, etc.
+
+**Basic Usage:**
+```sql
+EXEC sp_BlitzCache @SortOrder = 'CPU';
+```
+
+**Key Parameters:**
+
+@SortOrder (VARCHAR(50), default 'CPU') - Sort order for results:
+  - 'CPU' = Total CPU time
+  - 'Reads' = Total logical reads
+  - 'Writes' = Total writes
+  - 'Duration' = Total duration
+  - 'Executions' = Execution count
+  - 'Memory Grant' = Memory grant size
+  - 'Spills' = Spills to tempdb
+  - 'Average CPU' = Average CPU per execution
+  - 'Average Reads' = Average reads per execution
+  - 'Average Writes' = Average writes per execution
+  - 'Average Duration' = Average duration per execution
+  - 'Recent Compilations' = Recently compiled queries
+  - 'Query Hash' = Group by query hash
+  - 'Plan Hash' = Group by plan hash
+  - 'xpm' = Executions per minute
+
+@Top (INT, default 10) - Number of queries to return
+@ExpertMode (BIT, default 0) - 0=standard, 1=expert details and warnings
+@DatabaseName (NVARCHAR(128)) - Filter to specific database
+@MinimumExecutionCount (INT) - Only queries executed >= this many times
+@MinimumDurationMS (INT) - Only queries with avg duration >= this (milliseconds)
+@StoredProcName (NVARCHAR(128)) - Filter to specific stored procedure
+@QueryFilter (VARCHAR(10)) - 'All', 'Statements' (ad-hoc only), 'Procedures' (procs only)
+@IgnoreSystemDBs (BIT, default 1) - 0=include system DBs, 1=exclude
+@OnlyQueryHashes (VARCHAR(MAX)) - Comma-separated query hashes to analyze
+@IgnoreQueryHashes (VARCHAR(MAX)) - Comma-separated query hashes to exclude
+@OutputDatabaseName, @OutputSchemaName, @OutputTableName - For logging
+
+**Common Examples:**
+```sql
+-- Top CPU consumers (total CPU time)
+EXEC sp_BlitzCache @SortOrder = 'CPU', @Top = 25;
+
+-- Top read-intensive queries (total reads)
+EXEC sp_BlitzCache @SortOrder = 'Reads', @Top = 25;
+
+-- Top write-intensive queries
+EXEC sp_BlitzCache @SortOrder = 'Writes', @Top = 25;
+
+-- Long-running queries (total duration)
+EXEC sp_BlitzCache @SortOrder = 'Duration', @Top = 25;
+
+-- Frequently executed queries
+EXEC sp_BlitzCache @SortOrder = 'Executions', @Top = 25;
+
+-- Queries with large memory grants
+EXEC sp_BlitzCache @SortOrder = 'Memory Grant', @Top = 25;
+
+-- Queries causing spills to tempdb
+EXEC sp_BlitzCache @SortOrder = 'Spills', @Top = 25;
+
+-- Queries with highest average CPU per execution
+EXEC sp_BlitzCache @SortOrder = 'Average CPU', @Top = 25;
+
+-- Queries with highest average reads per execution
+EXEC sp_BlitzCache @SortOrder = 'Average Reads', @Top = 25;
+
+-- Queries with highest average duration per execution
+EXEC sp_BlitzCache @SortOrder = 'Average Duration', @Top = 25;
+
+-- Recently compiled queries
+EXEC sp_BlitzCache @SortOrder = 'Recent Compilations', @Top = 25;
+
+-- Most frequently executed queries per minute
+EXEC sp_BlitzCache @SortOrder = 'xpm', @Top = 25;
+
+-- Group by query hash (find similar queries)
+EXEC sp_BlitzCache @SortOrder = 'Query Hash', @Top = 25;
+
+-- Specific database
+EXEC sp_BlitzCache @DatabaseName = 'MyDB', @SortOrder = 'CPU';
+
+-- Stored procedures only
+EXEC sp_BlitzCache @QueryFilter = 'Procedures', @SortOrder = 'CPU';
+
+-- Long-running queries with minimum duration filter
+EXEC sp_BlitzCache @SortOrder = 'Duration', @MinimumDurationMS = 5000;
+
+-- Frequently executed with minimum execution count
+EXEC sp_BlitzCache @SortOrder = 'Executions', @MinimumExecutionCount = 1000;
+```
+
+---
+
+## sp_BlitzIndex - Index Analysis
+
+**Purpose:** Analyzes indexes for missing indexes, unused indexes, duplicate indexes, and fragmentation.
+
+**Basic Usage:**
+```sql
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase';
+```
+
+**Key Parameters:**
+
+@DatabaseName (NVARCHAR(128)) - Database to analyze (NULL = all databases)
+@SchemaName (NVARCHAR(128)) - Filter to specific schema
+@TableName (NVARCHAR(128)) - Filter to specific table
+@Mode (TINYINT, default 0) - 0=diagnose, 1=summarize, 2=index usage detail, 3=missing index detail, 4=diagnose details
+@Filter (TINYINT, default 0) - 0=all, 1=no low-priority, 2=only warnings
+@SkipPartitions (BIT, default 0) - 0=include partitions, 1=skip partition details
+@SkipStatistics (BIT, default 0) - 0=include stats, 1=skip statistics
+@GetAllDatabases (BIT, default 0) - 0=single DB, 1=all databases
+@BringThePain (BIT, default 0) - 0=normal, 1=detailed analysis (slow on large DBs)
+@IgnoreDatabases (NVARCHAR(MAX)) - Comma-separated list of DBs to skip
+@ThresholdMB (INT, default 250) - Only analyze tables >= this size (MB)
+@OutputDatabaseName, @OutputSchemaName, @OutputTableName - For logging
+
+**Mode Parameter Explained:**
+
+Mode 0 (Diagnose) - Default mode, shows index issues and recommendations
+Mode 1 (Summarize) - High-level summary of database index metrics
+Mode 2 (Index Usage Detail) - Detailed index usage statistics only
+Mode 3 (Missing Indexes) - Missing index recommendations only
+Mode 4 (Diagnose Details) - In-depth diagnostics including low-priority issues and small objects
+
+**Common Examples:**
+```sql
+-- Mode 0: Diagnose database (default - shows issues and recommendations)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase', @Mode = 0;
+
+-- Mode 1: Summarize database metrics (high-level overview)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase', @Mode = 1;
+
+-- Mode 2: Index usage detail only (which indexes are used/unused)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase', @Mode = 2;
+
+-- Mode 3: Missing indexes only (what indexes should be added)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase', @Mode = 3;
+
+-- Mode 4: In-depth diagnostics (includes low-priority issues and small objects)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDatabase', @Mode = 4;
+
+-- Analyze specific table
+EXEC sp_BlitzIndex @DatabaseName = 'MyDB', @SchemaName = 'dbo', @TableName = 'Orders';
+
+-- All databases (warnings only)
+EXEC sp_BlitzIndex @GetAllDatabases = 1, @Filter = 2;
+
+-- Large tables only (>1GB)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDB', @ThresholdMB = 1024;
+
+-- Detailed analysis (slow)
+EXEC sp_BlitzIndex @DatabaseName = 'MyDB', @BringThePain = 1;
+```
+
+**IMPORTANT: When user asks for sp_BlitzIndex, use {database_name} placeholder:**
+```sql
+-- ✅ CORRECT - Use placeholder that will be replaced with actual DB name
+EXEC sp_BlitzIndex @DatabaseName = '{database_name}', @Mode = 0;
+
+-- ❌ WRONG - Don't hardcode database name
+EXEC sp_BlitzIndex @DatabaseName = 'AdventureWorks2019', @Mode = 0;
+```
+
+---
+
+## sp_BlitzLock - Deadlock Analysis
+
+**Purpose:** Analyzes deadlock graphs from system_health extended events.
+
+**Basic Usage:**
+```sql
+EXEC sp_BlitzLock;
+```
+
+**Key Parameters:**
+
+@Top (INT, default 10) - Number of deadlocks to return
+@DatabaseName (NVARCHAR(256)) - Filter to specific database
+@StartDate (DATETIME) - Start of date range
+@EndDate (DATETIME) - End of date range
+@ObjectName (NVARCHAR(1000)) - Filter to specific object
+@StoredProcedureName (NVARCHAR(1000)) - Filter to specific proc
+@AppName (NVARCHAR(256)) - Filter to specific application
+@HostName (NVARCHAR(256)) - Filter to specific host
+@LoginName (NVARCHAR(256)) - Filter to specific login
+@EventSessionPath (NVARCHAR(4000)) - Path to extended event file
+
+**Common Examples:**
+```sql
+-- Recent deadlocks
+EXEC sp_BlitzLock @Top = 20;
+
+-- Deadlocks in specific database
+EXEC sp_BlitzLock @DatabaseName = 'MyDB';
+
+-- Deadlocks in date range
+EXEC sp_BlitzLock @StartDate = '2024-01-01', @EndDate = '2024-01-31';
+
+-- Deadlocks involving specific table
+EXEC sp_BlitzLock @ObjectName = 'Orders';
+
+-- Deadlocks from specific application
+EXEC sp_BlitzLock @AppName = 'MyApp';
+```
+
+---
+
+## sp_BlitzWho - Current Activity Monitoring
+
+**Purpose:** Shows currently running queries with detailed execution information.
+
+**Basic Usage:**
+```sql
+EXEC sp_BlitzWho;
+```
+
+**Key Parameters:**
+
+@ShowSleepingSPIDs (BIT, default 0) - 0=hide sleeping, 1=show sleeping sessions
+@ExpertMode (BIT, default 0) - 0=standard, 1=expert details
+@MinElapsedSeconds (INT, default 0) - Only show queries running >= this many seconds
+@MinCPUTime (INT, default 0) - Only show queries with CPU >= this (milliseconds)
+@MinLogicalReads (INT, default 0) - Only show queries with reads >= this
+@MinPhysicalReads (INT, default 0) - Only show queries with physical reads >= this
+@MinWrites (INT, default 0) - Only show queries with writes >= this
+@MinTempdbMB (INT, default 0) - Only show queries using >= this much tempdb (MB)
+@MinBlockingSeconds (INT, default 0) - Only show sessions blocking >= this many seconds
+@MinMemoryGrantMB (INT, default 0) - Only show queries with memory grant >= this (MB)
+
+**Common Examples:**
+```sql
+-- Current activity
+EXEC sp_BlitzWho;
+
+-- Include sleeping sessions
+EXEC sp_BlitzWho @ShowSleepingSPIDs = 1;
+
+-- Long-running queries (>30 seconds)
+EXEC sp_BlitzWho @MinElapsedSeconds = 30;
+
+-- CPU-intensive queries
+EXEC sp_BlitzWho @MinCPUTime = 10000; -- 10 seconds CPU
+
+-- Queries using lots of tempdb
+EXEC sp_BlitzWho @MinTempdbMB = 1024; -- 1GB+
+
+-- Blocking sessions
+EXEC sp_BlitzWho @MinBlockingSeconds = 5;
+```
+
+---
+
+## sp_WhoIsActive - Advanced Activity Monitoring
+
+**Purpose:** Comprehensive real-time activity monitoring by Adam Machanic.
+
+**Basic Usage:**
+```sql
+EXEC sp_WhoIsActive;
+```
+
+**Key Parameters:**
+
+@filter (VARCHAR(128)) - Filter by database, login, host, program, or session ID
+@filter_type (VARCHAR(10)) - 'session', 'program', 'database', 'login', 'host'
+@not_filter (VARCHAR(128)) - Exclude sessions matching this filter
+@show_own_spid (BIT, default 0) - 0=hide own session, 1=show own session
+@show_system_spids (BIT, default 0) - 0=hide system, 1=show system sessions
+@show_sleeping_spids (TINYINT, default 1) - 0=hide, 1=show with open tran, 2=show all
+@get_full_inner_text (BIT, default 0) - 0=outer text, 1=full inner text
+@get_plans (TINYINT, default 0) - 0=no plans, 1=statement plan, 2=full plan
+@get_outer_command (BIT, default 0) - 0=don't get, 1=get outer command
+@get_transaction_info (BIT, default 0) - 0=don't get, 1=get transaction info
+@get_task_info (TINYINT, default 1) - 0=don't get, 1=lightweight, 2=detailed
+@get_locks (BIT, default 0) - 0=don't get, 1=get lock details
+@get_avg_time (BIT, default 0) - 0=don't get, 1=get average query time
+@get_additional_info (BIT, default 0) - 0=don't get, 1=get additional info
+@find_block_leaders (BIT, default 0) - 0=don't find, 1=find blocking chains
+@delta_interval (INT, default 0) - Seconds to wait for delta snapshot (0=single snapshot)
+@output_column_list (VARCHAR(2000)) - Comma-separated list of columns to return
+@sort_order (VARCHAR(10)) - '[start_time]', '[cpu]', '[reads]', '[writes]', '[duration]', '[tempdb]', '[blocking]'
+@format_output (TINYINT, default 1) - 0=no formatting, 1=format for readability, 2=format + XML
+@destination_table (VARCHAR(4000)) - Table to log results (format: 'database.schema.table')
+
+**Common Examples:**
+```sql
+-- Basic current activity
+EXEC sp_WhoIsActive;
+
+-- With execution plans
+EXEC sp_WhoIsActive @get_plans = 1;
+
+-- With full details
+EXEC sp_WhoIsActive 
+    @get_plans = 2,
+    @get_transaction_info = 1,
+    @get_locks = 1,
+    @get_additional_info = 1;
+
+-- Filter by database
+EXEC sp_WhoIsActive @filter = 'MyDatabase', @filter_type = 'database';
+
+-- Filter by application
+EXEC sp_WhoIsActive @filter = 'MyApp', @filter_type = 'program';
+
+-- Find blocking chains
+EXEC sp_WhoIsActive @find_block_leaders = 1;
+
+-- Sort by CPU
+EXEC sp_WhoIsActive @sort_order = '[cpu]';
+
+-- Delta snapshot (5 seconds)
+EXEC sp_WhoIsActive @delta_interval = 5;
+
+-- Log to table
+EXEC sp_WhoIsActive @destination_table = 'DBA.dbo.WhoIsActiveLog';
+
+-- Exclude system sessions
+EXEC sp_WhoIsActive @show_system_spids = 0, @show_sleeping_spids = 0;
+```
+
+---
+
+## Ola Hallengren Maintenance Solution
+
+**Purpose:** Comprehensive database maintenance scripts for backups, integrity checks, and index maintenance.
+
+### DatabaseBackup - Backup Databases
+
+**Basic Usage:**
+```sql
+-- Full backup of all user databases
+EXEC DatabaseBackup 
+    @Databases = 'USER_DATABASES',
+    @Directory = 'C:\Backup',
+    @BackupType = 'FULL';
+```
+
+**Key Parameters:**
+
+@Databases (NVARCHAR(MAX)) - 'SYSTEM_DATABASES', 'USER_DATABASES', 'ALL_DATABASES', or comma-separated list
+@Directory (NVARCHAR(MAX)) - Backup directory path
+@BackupType (VARCHAR(20)) - 'FULL', 'DIFF', 'LOG'
+@Verify (VARCHAR(3), default 'N') - 'Y'=verify backup, 'N'=don't verify
+@CleanupTime (INT) - Delete backups older than this (hours)
+@CleanupMode (VARCHAR(10)) - 'AFTER_BACKUP', 'BEFORE_BACKUP'
+@Compress (VARCHAR(3)) - 'Y'=compress, 'N'=don't compress, NULL=default
+@CopyOnly (VARCHAR(3), default 'N') - 'Y'=copy-only backup, 'N'=regular
+@ChangeBackupType (VARCHAR(3), default 'N') - 'Y'=allow type change, 'N'=strict
+@BackupSoftware (VARCHAR(50)) - 'LITESPEED', 'SQLBACKUP', 'SQLSAFE', NULL=native
+@CheckSum (VARCHAR(3), default 'Y') - 'Y'=checksum, 'N'=no checksum
+@BlockSize (INT) - Block size in bytes
+@BufferCount (INT) - Number of buffers
+@MaxTransferSize (INT) - Max transfer size in bytes
+@NumberOfFiles (INT) - Number of backup files (striping)
+@CompressionLevel (INT) - Compression level (for third-party tools)
+@Description (NVARCHAR(255)) - Backup description
+@Threads (INT) - Number of threads (for third-party tools)
+@Throttle (INT) - Throttle percentage (for third-party tools)
+@Encrypt (VARCHAR(3), default 'N') - 'Y'=encrypt, 'N'=don't encrypt
+@EncryptionAlgorithm (VARCHAR(50)) - 'AES_128', 'AES_192', 'AES_256', 'TRIPLE_DES_3KEY'
+@ServerCertificate (NVARCHAR(MAX)) - Certificate name for encryption
+@ServerAsymmetricKey (NVARCHAR(MAX)) - Asymmetric key for encryption
+@EncryptionKey (NVARCHAR(MAX)) - Encryption key
+@ReadWriteFileGroups (VARCHAR(3), default 'N') - 'Y'=backup read-write filegroups only
+@OverrideBackupPreference (VARCHAR(3), default 'N') - 'Y'=override AG backup preference
+@NoRecovery (VARCHAR(3), default 'N') - 'Y'=leave in restoring state
+@URL (NVARCHAR(MAX)) - Azure blob storage URL
+@Credential (NVARCHAR(MAX)) - Azure credential name
+@MirrorDirectory (NVARCHAR(MAX)) - Mirror backup directory
+@MirrorURL (NVARCHAR(MAX)) - Mirror Azure URL
+@MirrorCleanupTime (INT) - Cleanup time for mirror backups
+@AvailabilityGroups (NVARCHAR(MAX)) - Filter by AG
+@Updateability (VARCHAR(20)) - 'READ_WRITE', 'READ_ONLY', 'ALL'
+@AdaptiveCompression (VARCHAR(8)) - 'SIZE', 'SPEED', NULL
+@ModificationLevel (INT) - Backup based on modification level
+@LogSizeSinceLastLogBackup (INT) - Only backup if log size >= this (MB)
+@TimeSinceLastLogBackup (INT) - Only backup if time since last >= this (seconds)
+@DataDomainBoostHost (NVARCHAR(MAX)) - Data Domain host
+@DataDomainBoostUser (NVARCHAR(MAX)) - Data Domain user
+@DataDomainBoostDevicePath (NVARCHAR(MAX)) - Data Domain device path
+@DataDomainBoostLockboxPath (NVARCHAR(MAX)) - Data Domain lockbox path
+@DirectoryStructure (NVARCHAR(MAX)) - Custom directory structure
+@FileName (NVARCHAR(MAX)) - Custom file name
+@AvailabilityGroupDirectoryStructure (NVARCHAR(MAX)) - AG directory structure
+@AvailabilityGroupFileName (NVARCHAR(MAX)) - AG file name
+@Execute (VARCHAR(3), default 'Y') - 'Y'=execute, 'N'=print only
+@LogToTable (VARCHAR(3), default 'N') - 'Y'=log to table, 'N'=don't log
+
+**Common Examples:**
+```sql
+-- Full backup of all user databases
+EXEC DatabaseBackup 
+    @Databases = 'USER_DATABASES',
+    @Directory = 'C:\Backup',
+    @BackupType = 'FULL',
+    @Verify = 'Y',
+    @Compress = 'Y',
+    @CheckSum = 'Y',
+    @CleanupTime = 168; -- 7 days
+
+-- Differential backup
+EXEC DatabaseBackup 
+    @Databases = 'USER_DATABASES',
+    @Directory = 'C:\Backup',
+    @BackupType = 'DIFF',
+    @Verify = 'Y';
+
+-- Transaction log backup
+EXEC DatabaseBackup 
+    @Databases = 'USER_DATABASES',
+    @Directory = 'C:\Backup',
+    @BackupType = 'LOG',
+    @Verify = 'Y',
+    @CleanupTime = 48; -- 2 days
+
+-- Backup specific databases
+EXEC DatabaseBackup 
+    @Databases = 'DB1,DB2,DB3',
+    @Directory = 'C:\Backup',
+    @BackupType = 'FULL';
+
+-- Backup to Azure
+EXEC DatabaseBackup 
+    @Databases = 'USER_DATABASES',
+    @URL = 'https://mystorageaccount.blob.core.windows.net/backups',
+    @Credential = 'MyAzureCredential',
+    @BackupType = 'FULL';
+```
+
+### DatabaseIntegrityCheck - Check Database Integrity
+
+**Basic Usage:**
+```sql
+EXEC DatabaseIntegrityCheck 
+    @Databases = 'USER_DATABASES',
+    @CheckCommands = 'CHECKDB';
+```
+
+**Key Parameters:**
+
+@Databases (NVARCHAR(MAX)) - Databases to check
+@CheckCommands (VARCHAR(MAX)) - 'CHECKDB', 'CHECKFILEGROUP', 'CHECKTABLE', 'CHECKALLOC', 'CHECKCATALOG'
+@PhysicalOnly (VARCHAR(3), default 'N') - 'Y'=physical only, 'N'=full check
+@NoIndex (VARCHAR(3), default 'N') - 'Y'=skip indexes, 'N'=check indexes
+@ExtendedLogicalChecks (VARCHAR(3), default 'N') - 'Y'=extended checks, 'N'=standard
+@TabLock (VARCHAR(3), default 'N') - 'Y'=use TABLOCK, 'N'=don't use
+@FileGroups (NVARCHAR(MAX)) - Specific filegroups to check
+@Objects (NVARCHAR(MAX)) - Specific objects to check
+@MaxDOP (INT) - Max degree of parallelism
+@AvailabilityGroups (NVARCHAR(MAX)) - Filter by AG
+@Execute (VARCHAR(3), default 'Y') - 'Y'=execute, 'N'=print only
+@LogToTable (VARCHAR(3), default 'N') - 'Y'=log to table, 'N'=don't log
+
+**Common Examples:**
+```sql
+-- Full integrity check
+EXEC DatabaseIntegrityCheck 
+    @Databases = 'USER_DATABASES',
+    @CheckCommands = 'CHECKDB';
+
+-- Physical only (faster)
+EXEC DatabaseIntegrityCheck 
+    @Databases = 'USER_DATABASES',
+    @CheckCommands = 'CHECKDB',
+    @PhysicalOnly = 'Y';
+
+-- Check specific database
+EXEC DatabaseIntegrityCheck 
+    @Databases = 'MyDatabase',
+    @CheckCommands = 'CHECKDB',
+    @ExtendedLogicalChecks = 'Y';
+```
+
+### IndexOptimize - Index Maintenance
+
+**Basic Usage:**
+```sql
+EXEC IndexOptimize 
+    @Databases = 'USER_DATABASES',
+    @FragmentationLow = NULL,
+    @FragmentationMedium = 'INDEX_REORGANIZE',
+    @FragmentationHigh = 'INDEX_REBUILD_ONLINE,INDEX_REBUILD_OFFLINE',
+    @FragmentationLevel1 = 5,
+    @FragmentationLevel2 = 30;
+```
+
+**Key Parameters:**
+
+@Databases (NVARCHAR(MAX)) - Databases to optimize
+@FragmentationLow (NVARCHAR(MAX)) - Action for low fragmentation (NULL, 'INDEX_REORGANIZE', 'INDEX_REBUILD_ONLINE', 'INDEX_REBUILD_OFFLINE')
+@FragmentationMedium (NVARCHAR(MAX)) - Action for medium fragmentation
+@FragmentationHigh (NVARCHAR(MAX)) - Action for high fragmentation
+@FragmentationLevel1 (INT, default 5) - Low/medium threshold (%)
+@FragmentationLevel2 (INT, default 30) - Medium/high threshold (%)
+@MinNumberOfPages (INT, default 1000) - Minimum pages to consider
+@MaxNumberOfPages (INT) - Maximum pages to consider
+@SortInTempdb (VARCHAR(3), default 'N') - 'Y'=sort in tempdb, 'N'=sort in user DB
+@MaxDOP (INT) - Max degree of parallelism
+@FillFactor (INT) - Fill factor percentage
+@PadIndex (VARCHAR(3)) - 'Y'=pad index, 'N'=don't pad
+@LOBCompaction (VARCHAR(3), default 'Y') - 'Y'=compact LOBs, 'N'=don't compact
+@UpdateStatistics (VARCHAR(20)) - 'ALL', 'INDEX', 'COLUMNS', NULL
+@OnlyModifiedStatistics (VARCHAR(3), default 'N') - 'Y'=only modified, 'N'=all
+@StatisticsSample (INT) - Sample percentage for stats
+@StatisticsResample (VARCHAR(3), default 'N') - 'Y'=resample, 'N'=don't resample
+@PartitionLevel (VARCHAR(3), default 'N') - 'Y'=partition level, 'N'=index level
+@MSShippedObjects (VARCHAR(3), default 'N') - 'Y'=include MS objects, 'N'=exclude
+@Indexes (NVARCHAR(MAX)) - Specific indexes to optimize
+@TimeLimit (INT) - Time limit in seconds
+@Delay (INT) - Delay between operations (seconds)
+@WaitAtLowPriorityMaxDuration (INT) - Max wait duration for online rebuild (minutes)
+@WaitAtLowPriorityAbortAfterWait (VARCHAR(25)) - 'NONE', 'SELF', 'BLOCKERS'
+@Resumable (VARCHAR(3), default 'N') - 'Y'=resumable, 'N'=not resumable
+@AvailabilityGroups (NVARCHAR(MAX)) - Filter by AG
+@Execute (VARCHAR(3), default 'Y') - 'Y'=execute, 'N'=print only
+@LogToTable (VARCHAR(3), default 'N') - 'Y'=log to table, 'N'=don't log
+
+**Common Examples:**
+```sql
+-- Standard index maintenance
+EXEC IndexOptimize 
+    @Databases = 'USER_DATABASES',
+    @FragmentationLow = NULL,
+    @FragmentationMedium = 'INDEX_REORGANIZE',
+    @FragmentationHigh = 'INDEX_REBUILD_ONLINE,INDEX_REBUILD_OFFLINE',
+    @FragmentationLevel1 = 5,
+    @FragmentationLevel2 = 30,
+    @UpdateStatistics = 'ALL',
+    @OnlyModifiedStatistics = 'Y';
+
+-- Rebuild all indexes
+EXEC IndexOptimize 
+    @Databases = 'MyDatabase',
+    @FragmentationLow = 'INDEX_REBUILD_ONLINE',
+    @FragmentationMedium = 'INDEX_REBUILD_ONLINE',
+    @FragmentationHigh = 'INDEX_REBUILD_ONLINE',
+    @SortInTempdb = 'Y',
+    @MaxDOP = 4;
+
+-- Update statistics only
+EXEC IndexOptimize 
+    @Databases = 'USER_DATABASES',
+    @FragmentationLow = NULL,
+    @FragmentationMedium = NULL,
+    @FragmentationHigh = NULL,
+    @UpdateStatistics = 'ALL';
+
+-- Specific database with time limit
+EXEC IndexOptimize 
+    @Databases = 'MyDatabase',
+    @FragmentationMedium = 'INDEX_REORGANIZE',
+    @FragmentationHigh = 'INDEX_REBUILD_ONLINE,INDEX_REBUILD_OFFLINE',
+    @TimeLimit = 3600; -- 1 hour
+```
+
+---
+
+## AI Usage Guidelines
+
+When users ask about these procedures:
+
+1. **Understand the goal** - What is the user trying to diagnose or fix?
+2. **Recommend the right tool** - Match the procedure to the problem
+3. **Provide complete syntax** - Include all relevant parameters
+4. **Explain the output** - Help interpret results
+5. **Suggest next steps** - What to do based on findings
+
+**Common Scenarios:**
+
+- "Server is slow" → sp_BlitzFirst (wait stats), sp_BlitzCache (top queries)
+- "Need health check" → sp_Blitz
+- "Query performance" → sp_BlitzCache
+- "Index problems" → sp_BlitzIndex
+- "Deadlocks" → sp_BlitzLock
+- "Current activity" → sp_BlitzWho or sp_WhoIsActive
+- "Maintenance" → Ola Hallengren scripts
+
+**Installation:**
+All First Responder Kit procedures: https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit
+sp_WhoIsActive: http://whoisactive.com
+Ola Hallengren: https://ola.hallengren.com

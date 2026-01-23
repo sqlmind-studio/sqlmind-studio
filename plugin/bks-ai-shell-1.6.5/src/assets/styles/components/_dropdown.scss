@@ -1,0 +1,124 @@
+.dropdown-container {
+  position: relative;
+}
+
+.dropdown-trigger {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: var(--focus-visible-outline);
+  }
+}
+
+.dropdown-popover {
+  position: fixed;
+  z-index: 1000;
+  background-color: var(--query-editor-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin: 0;
+  min-width: 200px;
+}
+
+.dropdown-search {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0.25rem;
+}
+
+.dropdown-search-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--query-editor-bg);
+  color: var(--text-dark);
+  font-size: 0.85rem;
+  outline: none;
+
+  &:focus {
+    border-color: var(--theme-base);
+    box-shadow: 0 0 0 2px rgb(from var(--theme-base) r g b / 10%);
+  }
+
+  &::placeholder {
+    color: var(--text-hint);
+  }
+}
+
+.dropdown-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-dark);
+  font-size: 0.85rem;
+
+  .option-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .model-name {
+    flex: 1;
+  }
+
+  .no-tools-warning {
+    font-size: 1rem;
+    cursor: help;
+    opacity: 0.8;
+  }
+
+  .selected-indicator {
+    color: var(--theme-base);
+    font-weight: 600;
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  &:hover:not(.disabled), &:focus-visible {
+    background-color: rgb(from var(--theme-base) r g b / 5%);
+  }
+
+  &.selected {
+    background-color: rgb(from var(--theme-base) r g b / 10%);
+    font-weight: 600;
+  }
+
+  &.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.dropdown-separator {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 0.25rem 0;
+}
+
+.dropdown-action {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-dark);
+  font-size: 0.85rem;
+  font-style: italic;
+
+  &:hover {
+    background-color: rgb(from var(--theme-base) r g b / 5%);
+  }
+}
