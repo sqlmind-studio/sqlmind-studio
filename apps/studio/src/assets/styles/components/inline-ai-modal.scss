@@ -1,0 +1,41 @@
+@use "sass:color";
+
+.inline-ai-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  padding: 0;
+  -webkit-app-region: no-drag;
+
+  .inline-ai-modal-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba($theme-bg, 0.5);
+  }
+
+  .inline-ai-modal-wrap {
+    position: absolute;
+    top: $gutter-w * 3;
+    left: 50%;
+    transform: translate(-50%, 0);
+    width: 100%;
+    max-width: 720px;
+    -webkit-app-region: no-drag;
+  }
+
+  .inline-ai {
+    width: 100%;
+  }
+
+  .inline-ai-box {
+    @include card-shadow-hover;
+    border-radius: 8px;
+    background: color.adjust($theme-bg, $lightness: 5%);
+  }
+}

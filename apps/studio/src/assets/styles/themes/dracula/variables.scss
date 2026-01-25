@@ -1,0 +1,65 @@
+@use "sass:color";
+$material-icons-font-path: 'material-icons/iconfont/';
+
+// Dracula Theme - Official Dracula color palette
+$theme-bg:               #282a36;
+$theme-base:             #f8f8f2;
+$theme-primary:          #ff79c6;
+$theme-secondary:        #bd93f9;
+
+// Colors
+// -----------------------------
+$text-dark:                 #f8f8f2;
+$text:                      #f8f8f2;
+$text-light:                rgba(#f8f8f2, 0.7);
+$text-lighter:              rgba(#f8f8f2, 0.5);
+$text-hint:                 #6272a4;
+$text-disabled:             #6272a4;
+
+$brand-info:                #8be9fd;
+$brand-success:             #50fa7b;
+$brand-warning:             #f1fa8c;
+$brand-danger:              #ff5555;
+$brand-default:             #6272a4;
+$brand-purple:              #bd93f9;
+$brand-pink:                #ff79c6;
+$brand-primary:             $theme-primary;
+$brand-secondary:           $theme-secondary;
+
+// App
+$border-color:              #44475a;
+$link-color:                $text-dark;
+$placeholder:               $text-hint;
+$selection:                 #44475a;
+$input-highlight:           rgba($theme-base, 0.27);
+
+$db-select-text:            white;
+$query-editor-bg:           #21222c;
+
+$row-handle-selected:       #343746;
+$row-handle-hover:          #343746;
+
+$titlebar-bg:               transparent;
+$global-sidebar-bg:         transparent;
+$sidebar-bg:                #21222c;
+$sidebar-heading-bg:        #282a36;
+$tabs-bg:                   transparent;
+$statusbar-bg:              #bd93f9;
+
+$statusbar-text:            #282a36;
+$statusbar-text-default:    #282a36;
+
+$row-handle: #282a36;
+
+$grouped-tables-base: #21222c;
+$grouped-tables-light: #343746;
+
+// Additional Dracula-specific variables
+$row-highlight: rgba($theme-primary, 0.1);
+$row-add: rgba($brand-success, 0.15);
+$row-delete: rgba($brand-danger, 0.15);
+$row-error: rgba($brand-danger, 0.2);
+
+$cell-edited: rgba($theme-primary, 0.2);
+$cell-error: rgba($brand-danger, 0.15);
+$cell-success: rgba($brand-success, 0.15);

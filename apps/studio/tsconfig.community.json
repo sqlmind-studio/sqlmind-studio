@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDirs": [
+      "src",
+      "tests"
+    ],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@tests/*": ["./tests/*"],
+      "@bksLogger": ["./src/lib/log/bksLogger.ts"],
+      "@sqlmindstudio/ui-kit": ["../ui-kit/dist"],
+      "@sqlmindstudio/ui-kit/*": ["../ui-kit/dist/*"]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist_electron",
+    "src-commercial",
+    "src-commercial.backup"
+  ]
+}

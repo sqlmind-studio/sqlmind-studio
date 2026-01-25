@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDirs": [
+      "src", "tests"
+    ],
+    "target": "es2018",
+    "module": "esnext",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "types": [
+      "jest"
+    ],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@tests/*": ["./tests/*"],
+      "@bksLogger": ["./src/lib/log/bksLogger.ts"],
+      "@sqlmindstudio/ui-kit": ["../ui-kit/dist"],
+      "@sqlmindstudio/ui-kit/*": ["../ui-kit/dist/*"]
+    },
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "scripthost"
+    ]
+  },
+
+  "exclude": [
+    "node_modules", "dist", "dist_electron"
+  ],
+  "sourceMapPathOverrides": {
+    "src/*": "${webRoot}/apps/studio/src/*"
+  }
+}

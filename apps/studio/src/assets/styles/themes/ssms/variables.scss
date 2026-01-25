@@ -1,0 +1,65 @@
+@use "sass:color";
+$material-icons-font-path: 'material-icons/iconfont/';
+
+// SSMS Theme - SQL Server Management Studio inspired
+$theme-bg:               #ffffff;
+$theme-base:             #0078d4;
+$theme-primary:          #0078d4;
+$theme-secondary:        #106ebe;
+
+// Colors
+// -----------------------------
+$text-dark:                 #1e1e1e;
+$text:                      #3b3b3b;
+$text-light:                #6d6d6d;
+$text-lighter:              #a0a0a0;
+$text-hint:                 #a0a0a0;
+$text-disabled:             #c8c8c8;
+
+$brand-info:                #0078d4;
+$brand-success:             #107c10;
+$brand-warning:             #ff8c00;
+$brand-danger:              #e81123;
+$brand-default:             #6d6d6d;
+$brand-purple:              #8764b8;
+$brand-pink:                #e3008c;
+$brand-primary:             $theme-primary;
+$brand-secondary:           $theme-secondary;
+
+// App
+$border-color:              #d0d0d0;
+$link-color:                $theme-primary;
+$placeholder:               $text-hint;
+$selection:                 rgba($theme-primary, 0.2);
+$input-highlight:           rgba($theme-base, 0.1);
+
+$db-select-text:            #1e1e1e;
+$query-editor-bg:           #ffffff;
+
+$row-handle-selected:       #e5f1fb;
+$row-handle-hover:          #f0f6fc;
+
+$titlebar-bg:               transparent;
+$global-sidebar-bg:         transparent;
+$sidebar-bg:                #f3f3f3;
+$sidebar-heading-bg:        #e8e8e8;
+$tabs-bg:                   transparent;
+$statusbar-bg:              #007acc;
+
+$statusbar-text:            #ffffff;
+$statusbar-text-default:    #ffffff;
+
+$row-handle: #f8f8f8;
+
+$grouped-tables-base: #f8f8f8;
+$grouped-tables-light: #ffffff;
+
+// Additional SSMS-specific variables
+$row-highlight: rgba($theme-primary, 0.08);
+$row-add: rgba($brand-success, 0.1);
+$row-delete: rgba($brand-danger, 0.1);
+$row-error: rgba($brand-danger, 0.15);
+
+$cell-edited: rgba($theme-primary, 0.15);
+$cell-error: rgba($brand-danger, 0.1);
+$cell-success: rgba($brand-success, 0.1);

@@ -1,0 +1,65 @@
+@use "sass:color";
+$material-icons-font-path: 'material-icons/iconfont/';
+
+// Ocean Theme - Deep blue tones inspired by the ocean
+$theme-bg:               #0d1117;
+$theme-base:             #58a6ff;
+$theme-primary:          #58a6ff;
+$theme-secondary:        #79c0ff;
+
+// Colors
+// -----------------------------
+$text-dark:                 #c9d1d9;
+$text:                      #8b949e;
+$text-light:                #6e7681;
+$text-lighter:              #484f58;
+$text-hint:                 #484f58;
+$text-disabled:             #484f58;
+
+$brand-info:                #58a6ff;
+$brand-success:             #3fb950;
+$brand-warning:             #d29922;
+$brand-danger:              #f85149;
+$brand-default:             #8b949e;
+$brand-purple:              #bc8cff;
+$brand-pink:                #d2a8ff;
+$brand-primary:             $theme-primary;
+$brand-secondary:           $theme-secondary;
+
+// App
+$border-color:              #30363d;
+$link-color:                $text-dark;
+$placeholder:               $text-hint;
+$selection:                 rgba($theme-primary, 0.3);
+$input-highlight:           rgba($theme-base, 0.27);
+
+$db-select-text:            white;
+$query-editor-bg:           #161b22;
+
+$row-handle-selected:       #1c2128;
+$row-handle-hover:          #1c2128;
+
+$titlebar-bg:               transparent;
+$global-sidebar-bg:         transparent;
+$sidebar-bg:                #0d1117;
+$sidebar-heading-bg:        #161b22;
+$tabs-bg:                   transparent;
+$statusbar-bg:              #1f6feb;
+
+$statusbar-text:            #0d1117;
+$statusbar-text-default:    white;
+
+$row-handle: #0d1117;
+
+$grouped-tables-base: #161b22;
+$grouped-tables-light: #1c2128;
+
+// Additional ocean-specific variables
+$row-highlight: rgba($theme-primary, 0.1);
+$row-add: rgba($brand-success, 0.15);
+$row-delete: rgba($brand-danger, 0.15);
+$row-error: rgba($brand-danger, 0.2);
+
+$cell-edited: rgba($theme-primary, 0.2);
+$cell-error: rgba($brand-danger, 0.15);
+$cell-success: rgba($brand-success, 0.15);
