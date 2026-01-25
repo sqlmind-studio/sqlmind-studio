@@ -12,6 +12,7 @@ temp/
 test.db
 *.sqlite
 dist_electron/
+apps/studio/dist_electron/
 docs/.vuepress/dist/
 .DS_Store
 yarn-error.log
@@ -21,8 +22,9 @@ yarn-error.log
 .env
 .instant/
 cli.zip
-apps/studio/
-apps/ui-kit/
+# apps are now included in git
+# apps/studio/
+# apps/ui-kit/
 *.db
 *.log
 *.orig

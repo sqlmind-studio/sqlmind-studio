@@ -16,6 +16,6 @@ export const CloudConfig = {
     // Fallback: Read from a config file or return empty string
     // In production, you should set this via environment variables
     // For development, you can temporarily set it here
-    return '_[~1>0d=$.Q(wOKK>-wp6xKV4nibbL'
+    return ''
   }
 }
