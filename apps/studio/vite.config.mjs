@@ -85,7 +85,8 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
         "@shared": path.resolve(__dirname, "./src/shared"),
         "assets": path.resolve(__dirname, './src/assets'),
-        "@bksLogger": path.resolve(__dirname, './src/lib/log/rendererLogger')
+        "@bksLogger": path.resolve(__dirname, './src/lib/log/rendererLogger'),
+        "@sqlmindstudio/ui-kit": path.resolve(__dirname, '../ui-kit/dist')
       },
     },
     build: {

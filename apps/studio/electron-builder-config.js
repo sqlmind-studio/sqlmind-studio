@@ -43,6 +43,7 @@ module.exports = {
     'dist/**/*',
     'package.json',
     'public/icons/**/*',
+    '!node_modules/@sqlmindstudio/ui-kit/**',
     '!**/node_gyp_bins/*'
   ],
   afterPack: "./build/afterPack.js",

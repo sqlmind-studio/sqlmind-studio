@@ -30,3 +30,4 @@ cli.zip
 *.orig
 surreal_data/
 README.md
+apps/studio/.env.local
