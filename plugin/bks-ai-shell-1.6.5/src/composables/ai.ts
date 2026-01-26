@@ -41,6 +41,8 @@ export function useAI(options: AIOptions) {
   const askingPermission = computed(() => pendingToolCallIds.value.length > 0);
   const followupAfterRejected = ref("");
 
+  const configurationStore = useConfigurationStore();
+
   let permitted = false;
   // 429 retry/backoff state
   const backoffRetries = ref(0);
@@ -167,6 +169,19 @@ export function useAI(options: AIOptions) {
         }
         const providerIdLc = String(resolvedSendOptions.providerId || '').toLowerCase();
         const isAnthropic = providerIdLc === 'anthropic' || providerIdLc.includes('anthropic');
+        try {
+          if (providerIdLc === 'google' && isGoogleThoughtSignatureModel(resolvedSendOptions.modelId || '')) {
+            const prev = String(resolvedSendOptions.modelId || '');
+            if (prev !== GOOGLE_TOOL_FALLBACK_MODEL_ID) {
+              resolvedSendOptions.modelId = GOOGLE_TOOL_FALLBACK_MODEL_ID as any;
+              try {
+                notify('broadcast', {
+                  message: `Google Gemini model '${prev}' is not supported for tool workflows. Using '${GOOGLE_TOOL_FALLBACK_MODEL_ID}' instead.`,
+                });
+              } catch {}
+            }
+          }
+        } catch {}
         // Keep sendOptions.value in sync so retries and error handlers have access.
         try { sendOptions.value = resolvedSendOptions; } catch {}
 
@@ -697,6 +712,17 @@ export function useAI(options: AIOptions) {
             /(data\s*type|datatype|type|as\s+[a-z0-9_]+\s*(\(|\b))/i.test(t);
         } catch {}
 
+        let isQueryWritingRequest = false;
+        try {
+          const t = String(lastUserText || '');
+          isQueryWritingRequest =
+            /(\bwrite\b|\bgenerate\b|\bcreate\b|\bbuild\b)\s+(?:a\s+)?(?:sql\s+)?query\b/i.test(t) ||
+            /\btop\s*\d+\b/i.test(t) ||
+            /\btop\s+\d+\s+results\b/i.test(t) ||
+            /\breport\b/i.test(t) ||
+            /\bdashboard\b/i.test(t);
+        } catch {}
+
         // Enforce a hard cap on system prompt length to keep TPM under control.
         // (Vite/minified builds can include very large prompts; trimming here is the safest guardrail.)
         const MAX_SYSTEM_PROMPT_CHARS = isAnthropic ? 6_000 : 12_000;
@@ -779,6 +805,28 @@ export function useAI(options: AIOptions) {
                   '- If conversion_rules reports potentialLoss=true, you MUST explain what is lossy (rounding/truncation/overflow risk) and give a safer alternative when possible (TRY_CONVERT, explicit style, truncation formula, etc.).',
                   '- If you output SQL scripts, format as multi-line: one statement per line, semicolons, and a newline after any -- comment before the next statement.',
                   '- If you cannot infer fromType/toType from the question, ask a single clarifying question and stop.',
+                ].join('\n'),
+              ].join('\n\n').trim(),
+            );
+          }
+        } catch {}
+
+        try {
+          if (isQueryWritingRequest) {
+            const base = typeof reviewedSystemPrompt === 'string' ? reviewedSystemPrompt : '';
+            reviewedSystemPrompt = capSystemPrompt(
+              [
+                base,
+                [
+                  'Query writing workflow requirement:',
+                  '- When the user asks you to write/generate a SQL query, you MUST NOT guess table/column names.',
+                  '- You MUST attempt schema discovery via tools BEFORE asking any clarifying question.',
+                  '- Step 1: determine the active database (call get_active_database, or use <local_memory> ActiveDatabase if present).',
+                  '- Step 2: discover tables/objects (call get_tables OR get_db_objects).',
+                  '- Step 3: fetch exact columns/types for candidate tables (call get_columns and/or get_user_table_schema).',
+                  '- Step 4: only after schema discovery, draft the SQL query.',
+                  '- If the user asks for sample output, default to TOP 10 (or the user requested TOP N).',
+                  '- You may ask ONE clarifying question ONLY if schema discovery tools fail/return empty OR none of the discovered tables are relevant.',
                 ].join('\n'),
               ].join('\n\n').trim(),
             );
@@ -869,8 +917,11 @@ export function useAI(options: AIOptions) {
                 if (name === 'conversion_rules') {
                   return true;
                 }
-                // Auto-allow read-only queries without prompting.
-                if (name === 'run_query' || name === 'run_diagnostic_query') {
+                // Auto-allow read-only queries without prompting ONLY when explicitly enabled.
+                if (
+                  !!configurationStore.allowExecutionOfReadOnlyQueries &&
+                  (name === 'run_query' || name === 'run_diagnostic_query')
+                ) {
                   const p: any = params || {};
                   const sqlText =
                     (typeof p.sql === 'string' ? p.sql : '') ||

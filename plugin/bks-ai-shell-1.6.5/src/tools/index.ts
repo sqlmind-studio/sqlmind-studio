@@ -135,6 +135,25 @@ const get_system_object_schema_cached = tool({
   },
 });
 
+export const run_diagnostic_query = (
+  onAskPermission: (toolCallId: string, params: any) => Promise<boolean>,
+) =>
+  tool({
+    description: (run_diagnostic_query_impl as any).description,
+    parameters: (run_diagnostic_query_impl as any).parameters,
+    execute: async (params, options) => {
+      const permitted = await onAskPermission((options as any)?.toolCallId, params);
+      if (!permitted) {
+        console.log('[run_diagnostic_query] User declined to run the diagnostic query');
+        return safeJSONStringify({
+          type: 'user_declined',
+          message: 'User declined to run this diagnostic query. Acknowledge their decision and ask what they\'d like to do instead.',
+        });
+      }
+      return (run_diagnostic_query_impl as any).execute(params, options);
+    },
+  });
+
 const parseBaseType = (typeText: string) => {
   const t = String(typeText || '').trim();
   const m = t.match(/^([a-zA-Z0-9_]+)\s*(?:\((.*)\))?$/);
@@ -1677,7 +1696,7 @@ function parseValidationError(errorMsg: string): { valid: false; error: string; 
 // ============================================================================
 // DIAGNOSTIC QUERY TOOL: Safe system query execution for Chat AI
 // ============================================================================
-export const run_diagnostic_query = tool({
+export const run_diagnostic_query_impl = tool({
   description: `🔍 DIAGNOSTIC QUERY TOOL - Execute read-only queries to diagnose SQL Server issues and read database objects.
   
   🚨🚨🚨 CRITICAL REQUIREMENT - READ THIS FIRST 🚨🚨🚨
@@ -3899,9 +3918,10 @@ export function getTools(
   // Heuristic: only include token-heavy tool families when the user's message suggests they need them.
   const wantsPlan = /(execution\s+plan|show\s*plan|actual\s+plan|estimated\s+plan|query\s+plan|plan\s+xml|plan\s+cache)/i.test(lastUserText);
   const wantsStats = /(statistics\s+io|statistics\s+time|io\s+stats|time\s+stats|messages\s+tab|print\s+messages)/i.test(lastUserText);
-  const wantsSchema = /(schema|columns?|data\s+type|index(es)?|constraint(s)?|ddl|create\s+table|table\s+definition)/i.test(lastUserText);
+  const wantsQueryWriting = /\b(write|generate|create|build)\b\s+(?:a\s+)?(?:sql\s+)?query\b|\bselect\b\s+.*\bfrom\b|\btop\s*\d+\b|\btop\s+\d+\s+results\b|\breport\b|\bdashboard\b/i.test(lastUserText);
+  const wantsSchema = /(schema|columns?|data\s+type|index(es)?|constraint(s)?|ddl|create\s+table|table\s+definition)/i.test(lastUserText) || wantsQueryWriting;
   const wantsInvestigation = /(blocking|deadlock|slow|performance|tune|optimi[sz]e|diagnos(e|is)|waits?|cpu|io|latency|dm_exec|sp_whoisactive|sp_blitz)/i.test(lastUserText);
-  const wantsQueryBuilder = /(build\s+query|step\s*by\s*step|query\s+builder|add\s+where|select\s+columns)/i.test(lastUserText);
+  const wantsQueryBuilder = /(build\s+query|step\s*by\s*step|query\s+builder|add\s+where|select\s+columns)/i.test(lastUserText) || wantsQueryWriting;
   
   // Always keep a minimal core toolset.
   // NOTE: Reducing tools materially reduces token usage because tool schemas/descriptions are sent to the model.
@@ -3953,7 +3973,10 @@ export function getTools(
     // - The assistant deciding to run diagnostics, while the tool was missing.
     // - UI showing "Run Diagnostic Query" inconsistently.
     console.log('[getTools] 💬 CHAT MODE: Adding run_diagnostic_query tool');
-    toolSet["run_diagnostic_query"] = run_diagnostic_query;
+    toolSet["run_diagnostic_query"] = run_diagnostic_query(async (toolCallId, params) => {
+      const permitted = await onAskPermission("run_diagnostic_query", toolCallId, params);
+      return permitted;
+    });
     console.log('[getTools] 💬 CHAT MODE: run_diagnostic_query tool added for safe system diagnostics');
 
     // IMPORTANT: Always expose system schema fetch tool in Chat mode.
