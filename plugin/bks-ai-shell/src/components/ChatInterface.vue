@@ -610,7 +610,7 @@ export default {
         
         // SQL-interceptor: validate LLM SQL responses right after generation completes
         try {
-          if (oldStatus === 'streaming' && newStatus === 'ready') {
+          if (oldStatus === 'streaming' && newStatus === 'ready' && this.outputMode === 'code') {
             const msgs: any[] = (this.messages as any) || []
             const last = msgs.length ? msgs[msgs.length - 1] : null
             if (last && last.role === 'assistant' && !(last as any).validatedByInlineAI) {

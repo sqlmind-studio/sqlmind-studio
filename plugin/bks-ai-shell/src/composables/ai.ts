@@ -146,6 +146,8 @@ export function useAI(options: AIOptions) {
 
   const { messages, input, append, error, status, addToolResult, stop, reload } =
     useChat({
+      api: "", // We use a custom fetch below
+      initialMessages: options.initialMessages,
       fetch: async (url, fetchOptions) => {
         // Check credits before proceeding with API call
         const creditCheck = await checkCreditsAvailable();
@@ -720,7 +722,15 @@ export function useAI(options: AIOptions) {
             /\btop\s*\d+\b/i.test(t) ||
             /\btop\s+\d+\s+results\b/i.test(t) ||
             /\breport\b/i.test(t) ||
-            /\bdashboard\b/i.test(t);
+            /\bdashboard\b/i.test(t) ||
+            /\b(sql|query)\b/i.test(t) ||
+            /\bconsulta\b/i.test(t) ||
+            /\breporte\b/i.test(t) ||
+            /\binforme\b/i.test(t) ||
+            /\bconsulta\b\s+sql/i.test(t) ||
+            /\brequ[eê]te\b/i.test(t) ||
+            /\brequ[eê]te\b\s+sql/i.test(t) ||
+            /(?:\b(?:اكتب|اكتب\s+لي|انشئ|أنشئ|كوّن|اصنع)\b[\s\S]{0,40}(?:استعلام|سؤال|SQL|sql|query))|(?:\b(?:استعلام|SQL|sql|query)\b[\s\S]{0,40}\b(?:اكتب|انشئ|أنشئ|كوّن|اصنع)\b)/i.test(t);
         } catch {}
 
         // Enforce a hard cap on system prompt length to keep TPM under control.
@@ -820,12 +830,18 @@ export function useAI(options: AIOptions) {
                 [
                   'Query writing workflow requirement:',
                   '- When the user asks you to write/generate a SQL query, you MUST NOT guess table/column names.',
+                  '- You MUST reply in the same language as the user message (unless the user explicitly asks for English).',
                   '- You MUST attempt schema discovery via tools BEFORE asking any clarifying question.',
                   '- Step 1: determine the active database (call get_active_database, or use <local_memory> ActiveDatabase if present).',
                   '- Step 2: discover tables/objects (call get_tables OR get_db_objects).',
                   '- Step 3: fetch exact columns/types for candidate tables (call get_columns and/or get_user_table_schema).',
                   '- Step 4: only after schema discovery, draft the SQL query.',
+                  '- Step 5 (validation): BEFORE presenting the final SQL, you MUST call validate_query(sql) on your drafted query and ensure it is valid.',
+                  '- If validate_query reports issues (unknown columns/tables/syntax), you MUST fix the SQL and validate again (up to 2 attempts) before showing it.',
                   '- If the user asks for sample output, default to TOP 10 (or the user requested TOP N).',
+                  '- IMPORTANT semantic accuracy rule: if you run the query and it returns 0 rows, you MUST NOT conclude "not found".',
+                  '- Instead, run up to 2 quick verification queries to validate assumptions, e.g. list available collections/names/ids from the collection table, or check what columns store external numbering (book/number/collection-specific id). Then propose a corrected query.',
+                  '- If the numbering scheme is ambiguous (common with Hadith datasets), ask ONE clarifying question about the edition/numbering only AFTER you have inspected available columns/values.',
                   '- You may ask ONE clarifying question ONLY if schema discovery tools fail/return empty OR none of the discovered tables are relevant.',
                 ].join('\n'),
               ].join('\n\n').trim(),
@@ -956,6 +972,16 @@ export function useAI(options: AIOptions) {
       },
       onError: async (error) => {
         try { isSending.value = false; } catch {}
+
+        const isInFlight = () => {
+          try {
+            const s = String((status as any)?.value || '').toLowerCase();
+            return s === 'submitted' || s === 'streaming';
+          } catch {
+            return false;
+          }
+        };
+
         // Suppress benign abort noise from cancelled streams
         const abortNoise = (error?.name === 'AbortError') || /signal is aborted without reason/i.test(error?.message || '');
         if (!abortNoise) {
@@ -1063,14 +1089,14 @@ export function useAI(options: AIOptions) {
             // Mutating the UI message list can make the conversation appear to "reset" mid-chat.
             // Instead, just retry; the fetch() path already sanitizes outbound messages.
             nextTick().then(() => {
-              retry(sendOptions.value!);
+              if (isInFlight()) retry(sendOptions.value!);
             })
           } else {
             backoffRetries.value++;
             let waitMs = 1000 * Math.pow(2, backoffRetries.value); // 1s, 2s, 4s max (retries capped)
             try { notify('broadcast', { message: `Rate-limited. Retrying in ${(waitMs/1000).toFixed(1)}s...` }); } catch {}
             await new Promise((r) => setTimeout(r, waitMs));
-            retry(sendOptions.value!);
+            if (isInFlight()) retry(sendOptions.value!);
           }
         }
 
@@ -1099,7 +1125,7 @@ export function useAI(options: AIOptions) {
                     message: `Google Gemini model '${currentModel}' requires thought signatures for tools. Switching to '${GOOGLE_TOOL_FALLBACK_MODEL_ID}' and retrying...`,
                   });
                 } catch {}
-                try { retry(sendOptions.value as any); } catch {}
+                try { if (isInFlight()) retry(sendOptions.value as any); } catch {}
                 return;
               }
             }
@@ -1112,12 +1138,23 @@ export function useAI(options: AIOptions) {
         // Reset backoff after a successful assistant message
         backoffRetries.value = 0;
 
+        const isInFlight = () => {
+          try {
+            const s = String((status as any)?.value || '').toLowerCase();
+            return s === 'submitted' || s === 'streaming';
+          } catch {
+            return false;
+          }
+        };
+
         // Provider-agnostic auto-resume: some providers can stop silently mid-investigation
         // (no error surfaced) even though the assistant was clearly about to continue.
         // We retry ONCE per user turn with a hidden "continue" instruction, debounced.
         const scheduleAutoResume = (reason: string) => {
           try {
             if (!sendOptions.value) return;
+            // Never auto-reload after completion; it can replay the whole conversation.
+            if (!isInFlight()) return;
             // Anthropic Tier-1: do not auto-resume/reload, it can create extra requests and hit TPM.
             if (sendOptions.value.providerId === 'anthropic') return;
 
@@ -1145,7 +1182,7 @@ export function useAI(options: AIOptions) {
             pendingHiddenContext.value = `\n\n<auto_resume reason="${String(reason).slice(0, 80)}">\nContinue exactly from where you stopped.\n- Do NOT restart the investigation.\n- Continue running the next diagnostic query if needed.\n- If you already have enough data, produce the final recommendations now.\n</auto_resume>`;
             try { console.warn('[useAI] Auto-resume triggered:', reason); } catch {}
             setTimeout(() => {
-              try { reload(); } catch (_) {}
+              try { if (isInFlight()) reload(); } catch (_) {}
             }, 80);
           } catch (_) {}
         };
@@ -1164,6 +1201,10 @@ export function useAI(options: AIOptions) {
             if (sendOptions.value.providerId === 'anthropic') {
               return;
             }
+            // Never auto-retry after completion; it can replay the conversation.
+            if (!isInFlight()) {
+              return;
+            }
             const key = `autoRetryEmpty:${hasAssistantText ? 'noTokens' : 'noText'}`;
             const lastKey = lastAutoContinueKey;
             const lastAt = lastAutoContinueAt || 0;
@@ -1180,7 +1221,7 @@ export function useAI(options: AIOptions) {
                 }
               } catch (_) {}
               setTimeout(() => {
-                try { retry(sendOptions.value!); } catch (_) {}
+                try { if (isInFlight()) retry(sendOptions.value!); } catch (_) {}
               }, 150);
               return;
             }
@@ -1288,7 +1329,6 @@ export function useAI(options: AIOptions) {
           console.error('[AI Usage] Error in onFinish:', err);
         }
       },
-      initialMessages: options.initialMessages,
     });
 
   function saveMessages() {

@@ -1,6 +1,6 @@
 {
   "name": "bks-ai-shell",
-  "version": "1.0.0",
+  "version": "1.6.7",
   "description": "A SQLMind Studio plugin for analyzing database and generate queries",
   "license": "MIT",
   "type": "module",

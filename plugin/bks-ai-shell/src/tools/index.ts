@@ -1214,6 +1214,48 @@ export const run_query = (
         });
       }
 
+      // Validate query before executing to avoid running invalid SQL.
+      // This makes validation consistent even if the model doesn't explicitly call validate_query.
+      let validation: any = null;
+      try {
+        const info: any = await getConnectionInfo();
+        const isSqlServer =
+          String(info?.databaseType || '').toLowerCase() === 'sqlserver' ||
+          String(info?.connectionType || '').toLowerCase() === 'sqlserver';
+
+        if (isSqlServer) {
+          const q = String(params.query || '');
+          // NOTE: SQL Server NOEXEC validates syntax/object names without running statements.
+          // Keep it as a single batch; GO is not supported via drivers.
+          const wrapped = `SET NOEXEC ON;\n${q}\n;\nSET NOEXEC OFF;`;
+          await runQuery(wrapped);
+          validation = { ok: true, engine: 'sqlserver', mode: 'noexec' };
+        } else {
+          validation = {
+            ok: false,
+            engine: String(info?.databaseType || info?.connectionType || 'unknown'),
+            message: 'Query validation is not supported for this database type. Proceeding to run the query.',
+          };
+        }
+      } catch (e) {
+        validation = {
+          ok: false,
+          type: 'error',
+          message: e instanceof Error ? e.message : String(e),
+        };
+      }
+
+      // If validation hard-fails (SQL Server), do not execute the query.
+      try {
+        if (validation && validation.ok === false && validation.engine === 'sqlserver') {
+          return safeJSONStringify({
+            type: 'validation_failed',
+            validation,
+            message: 'Query failed validation and was not executed. Fix the SQL and try again.',
+          });
+        }
+      } catch (_) {}
+
       const isShowPlanXml = (v: any) => {
         if (typeof v !== 'string') return false;
         const s = v.trim();
@@ -1429,7 +1471,11 @@ export const run_query = (
         const results = await runQuery(params.query);
         console.log('[run_query] Query executed successfully, results:', results);
         console.log('[run_query] ⚠️ REMINDER: You MUST now analyze these results and provide recommendations. DO NOT stop here!');
-        return safeJSONStringify(compactRunQueryResult(results));
+        const payload: any = compactRunQueryResult(results);
+        try {
+          payload._validation = validation;
+        } catch (_) {}
+        return safeJSONStringify(payload);
       } catch (e) {
         return safeJSONStringify({
           type: "error",
@@ -3918,7 +3964,7 @@ export function getTools(
   // Heuristic: only include token-heavy tool families when the user's message suggests they need them.
   const wantsPlan = /(execution\s+plan|show\s*plan|actual\s+plan|estimated\s+plan|query\s+plan|plan\s+xml|plan\s+cache)/i.test(lastUserText);
   const wantsStats = /(statistics\s+io|statistics\s+time|io\s+stats|time\s+stats|messages\s+tab|print\s+messages)/i.test(lastUserText);
-  const wantsQueryWriting = /\b(write|generate|create|build)\b\s+(?:a\s+)?(?:sql\s+)?query\b|\bselect\b\s+.*\bfrom\b|\btop\s*\d+\b|\btop\s+\d+\s+results\b|\breport\b|\bdashboard\b/i.test(lastUserText);
+  const wantsQueryWriting = /\b(write|generate|create|build)\b\s+(?:a\s+)?(?:sql\s+)?query\b|\bselect\b\s+.*\bfrom\b|\btop\s*\d+\b|\btop\s+\d+\s+results\b|\breport\b|\bdashboard\b|\b(sql|query)\b|\bconsulta\b|\breporte\b|\binforme\b|\bescribe\b\s+.*\bconsulta\b|\bgenera\b\s+.*\bconsulta\b|\bcr[eé]e\b\s+.*\brequ[eê]te\b|\bg[ée]n[ée]re\b\s+.*\brequ[eê]te\b|\bconsulta\b\s+sql|\bconsulta\b\s+de\s+sql|\bconsulta\b\s+select|\brequ[eê]te\b\s+sql|\brequ[eê]te\b\s+select|(?:\b(?:اكتب|اكتب\s+لي|انشئ|أنشئ|كوّن|اصنع)\b[\s\S]{0,40}(?:استعلام|سؤال|SQL|sql|query))|(?:\b(?:استعلام|SQL|sql|query)\b[\s\S]{0,40}\b(?:اكتب|انشئ|أنشئ|كوّن|اصنع)\b)/i.test(lastUserText);
   const wantsSchema = /(schema|columns?|data\s+type|index(es)?|constraint(s)?|ddl|create\s+table|table\s+definition)/i.test(lastUserText) || wantsQueryWriting;
   const wantsInvestigation = /(blocking|deadlock|slow|performance|tune|optimi[sz]e|diagnos(e|is)|waits?|cpu|io|latency|dm_exec|sp_whoisactive|sp_blitz)/i.test(lastUserText);
   const wantsQueryBuilder = /(build\s+query|step\s*by\s*step|query\s+builder|add\s+where|select\s+columns)/i.test(lastUserText) || wantsQueryWriting;

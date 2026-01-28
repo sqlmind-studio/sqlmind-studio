@@ -20,7 +20,7 @@ const releaseNotesFile = path.join(projectDir, 'build', 'release-notes.md')
 
 const optionalExtraResources = new Set([
   path.join(projectDir, 'build', 'launcher-script.sh'),
-  path.resolve(projectDir, '../../plugin/bks-ai-shell-1.6.5'),
+  path.resolve(projectDir, '../../plugin/bks-ai-shell'),
 ])
 
 
@@ -77,7 +77,7 @@ module.exports = {
       to: "node_modules/ws"
     },
     {
-      from: '../../plugin/bks-ai-shell-1.6.5',
+      from: '../../plugin/bks-ai-shell',
       to: 'plugins/bks-ai-shell'
     }
   ].filter((r) => {
