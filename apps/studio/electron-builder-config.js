@@ -232,6 +232,7 @@ module.exports = {
     "artifactName": "${productName}-${version}-portable.exe",
   },
   nsis: {
+    artifactName: "${productName}-Setup-${version}.${ext}",
     oneClick: false,
     installerIcon: './SQLMind.ico',
     uninstallerIcon: './SQLMind.ico',
